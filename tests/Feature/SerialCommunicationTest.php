@@ -61,10 +61,73 @@ test('it renders the compact table controls', function () {
 
     Livewire::test(SerialCommunication::class)
         ->assertSeeText('Clear')
+        ->assertSeeText('USB debug')
         ->assertSeeText('Číslo zariadenia')
         ->assertSeeText('Ruka')
         ->assertSeeText('Začať')
         ->assertSeeText('komunikáciu')
         ->assertSeeHtml('sticky top-0 z-20')
-        ->assertSeeHtml('sticky top-0 z-10');
+        ->assertSeeHtml('sticky top-0 z-10')
+        ->assertViewHas('codeLookup', function (array $codeLookup): bool {
+            return $codeLookup['20d1f1'] === [
+                'deviceNumber' => '101',
+                'buttonName' => 'F',
+            ];
+        })
+        ->assertViewHas('codePrefixes', function (array $codePrefixes): bool {
+            return in_array('20', $codePrefixes['oneByte'], true) &&
+                in_array('20d1', $codePrefixes['twoBytes'], true);
+        });
+});
+
+test('it builds a local code lookup without empty button codes', function () {
+    Device::query()->create([
+        'device_number' => '326',
+        'code_a' => '3486b2',
+        'code_b' => '3496a2',
+        'code_c' => '34a692',
+        'code_d' => '',
+        'code_e' => '',
+        'code_f' => '',
+        'code_ruka' => '',
+    ]);
+
+    $component = app(SerialCommunication::class);
+    $component->mount();
+
+    expect($component->getCodeLookup())->toMatchArray([
+        '3486b2' => [
+            'deviceNumber' => '326',
+            'buttonName' => 'A',
+        ],
+        '3496a2' => [
+            'deviceNumber' => '326',
+            'buttonName' => 'B',
+        ],
+        '34a692' => [
+            'deviceNumber' => '326',
+            'buttonName' => 'C',
+        ],
+    ])->not->toHaveKey('');
+});
+
+test('it builds unique code prefixes for stream resynchronization', function () {
+    Device::query()->create([
+        'device_number' => '101',
+        'code_a' => '2081a1',
+        'code_b' => '2091b1',
+        'code_c' => '20a181',
+        'code_d' => '20b191',
+        'code_e' => '20c1e1',
+        'code_f' => '20d1f1',
+        'code_ruka' => '20e1c1',
+    ]);
+
+    $component = app(SerialCommunication::class);
+    $component->mount();
+
+    expect($component->getCodePrefixes())->toMatchArray([
+        'oneByte' => ['20'],
+        'twoBytes' => ['2081', '2091', '20a1', '20b1', '20c1', '20d1', '20e1'],
+    ]);
 });

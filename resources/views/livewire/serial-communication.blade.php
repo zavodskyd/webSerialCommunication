@@ -13,11 +13,40 @@
         <x-secondary-button @click="stopCommunication" x-bind:disabled="!isConnected">Zastaviť
             komunikáciu</x-secondary-button>
         <x-secondary-button @click="closeConnection" x-bind:disabled="!isConnected">Odpojiť</x-secondary-button>
+        <x-secondary-button @click="showUsbDebug = !showUsbDebug"
+            x-bind:class="showUsbDebug ? '!border-amber-300 !bg-amber-50 !text-amber-900' : ''">USB debug</x-secondary-button>
         <x-secondary-button @click="resetReceivedData" x-bind:disabled="!hasActiveRows()">Clear</x-secondary-button>
 
         <div class="mt-4">
             <h3>Prijaté dáta:</h3>
             <div class="mt-3 space-y-3">
+                <div x-show="showUsbDebug" x-transition.opacity.duration.200ms
+                    class="rounded-xl border border-amber-200/80 bg-amber-50/80 p-3 text-xs text-amber-900 shadow-sm">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="font-semibold">USB debug</span>
+                            <span x-text="`Raw chunky: ${rawChunkCount}`"></span>
+                            <span x-text="`Rozpoznané frame: ${parsedFrameCount}`"></span>
+                            <span x-text="`Neznáme frame: ${unknownFrameCount}`"></span>
+                            <span x-text="`Zahodené bajty: ${droppedByteCount}`"></span>
+                            <span x-text="`Buffer: ${incomingBytes.length}`"></span>
+                        </div>
+                        <x-secondary-button @click="clearDebugLog" x-bind:disabled="debugEvents.length === 0">Clear debug</x-secondary-button>
+                    </div>
+                    <div class="mt-3 max-h-40 overflow-auto rounded-lg border border-amber-200/70 bg-white/70 p-2 font-mono text-[11px]">
+                        <template x-if="debugEvents.length === 0">
+                            <div class="text-slate-500">Zatial bez raw USB dat.</div>
+                        </template>
+                        <template x-for="(event, index) in debugEvents" :key="`${event.timestamp}-${index}`">
+                            <div class="border-b border-slate-200/60 py-1 last:border-b-0">
+                                <span class="font-semibold" x-text="event.timestamp"></span>
+                                <span class="ml-2 uppercase tracking-wide text-slate-500" x-text="event.type"></span>
+                                <span class="ml-2" x-text="event.message"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
                 <div class="overflow-hidden rounded-xl border border-slate-300/70 bg-white/80 shadow-sm">
                     <div class="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 px-3 py-2 backdrop-blur">
                         <div class="flex flex-wrap items-center gap-2 text-xs">
@@ -90,7 +119,17 @@
             isReading: false,
             lastMatchedDeviceNumber: null,
             lastButtonName: null,
+            messageByteLength: 3,
+            incomingBytes: [],
+            codeLookup: {{ Illuminate\Support\Js::from($codeLookup) }},
+            codePrefixes: {{ Illuminate\Support\Js::from($codePrefixes) }},
             deviceButtonCounts: {},
+            droppedByteCount: 0,
+            unknownFrameCount: 0,
+            rawChunkCount: 0,
+            parsedFrameCount: 0,
+            debugEvents: [],
+            showUsbDebug: false,
 
             init() {
                 if ('serial' in navigator) {
@@ -202,16 +241,8 @@
                                     console.log('Reading finished');
                                     break;
                                 }
-                                const hexData = this.arrayBufferToHex(value);
-                                console.log("Received data (hex):", hexData);
-
-                                const checkResult = await this.$wire.checkCode(hexData);
-
-                                if (checkResult?.found && checkResult.deviceNumber && checkResult.buttonName) {
-                                    this.lastMatchedDeviceNumber = checkResult.deviceNumber;
-                                    this.lastButtonName = checkResult.buttonName;
-                                    this.incrementButtonCount(checkResult.deviceNumber, checkResult.buttonName);
-                                }
+                                this.queueIncomingBytes(value);
+                                this.processIncomingMessages();
                             }
                         } finally {
                             this.reader.releaseLock();
@@ -230,7 +261,72 @@
                 this.receivedData = '';
                 this.lastMatchedDeviceNumber = null;
                 this.lastButtonName = null;
+                this.incomingBytes = [];
                 this.deviceButtonCounts = {};
+                this.rawChunkCount = 0;
+                this.parsedFrameCount = 0;
+                this.droppedByteCount = 0;
+                this.unknownFrameCount = 0;
+                this.debugEvents = [];
+            },
+
+            queueIncomingBytes(buffer) {
+                const bytes = Array.from(buffer);
+
+                this.rawChunkCount += 1;
+                this.incomingBytes.push(...bytes);
+                this.recordDebugEvent('raw', `chunk=${this.byteArrayToHex(bytes)} len=${bytes.length}`);
+            },
+
+            processIncomingMessages() {
+                while (this.incomingBytes.length >= this.messageByteLength) {
+                    const frame = this.incomingBytes.slice(0, this.messageByteLength);
+                    const hexData = this.byteArrayToHex(frame);
+                    const matchedCode = this.codeLookup[hexData] || null;
+
+                    if (!matchedCode) {
+                        this.resyncIncomingBytes();
+                        continue;
+                    }
+
+                    this.incomingBytes.splice(0, this.messageByteLength);
+                    this.parsedFrameCount += 1;
+                    this.recordDebugEvent('parsed', `frame=${hexData} device=${matchedCode.deviceNumber} button=${matchedCode.buttonName}`);
+                    this.lastMatchedDeviceNumber = matchedCode.deviceNumber;
+                    this.lastButtonName = matchedCode.buttonName;
+                    this.incrementButtonCount(matchedCode.deviceNumber, matchedCode.buttonName);
+                }
+            },
+
+            resyncIncomingBytes() {
+                if (this.incomingBytes.length < this.messageByteLength) {
+                    return;
+                }
+
+                const frame = this.incomingBytes.slice(0, this.messageByteLength);
+                const oneBytePrefix = this.byteArrayToHex(frame.slice(0, 1));
+                const twoBytePrefix = this.byteArrayToHex(frame.slice(0, 2));
+
+                this.unknownFrameCount += 1;
+                this.recordDebugEvent('unknown', `frame=${this.byteArrayToHex(frame)}`);
+
+                const couldBeStartOfKnownFrame = this.codePrefixes.oneByte.includes(oneBytePrefix) ||
+                    this.codePrefixes.twoBytes.includes(twoBytePrefix);
+
+                this.incomingBytes.shift();
+                this.droppedByteCount += 1;
+
+                if (couldBeStartOfKnownFrame) {
+                    this.recordDebugEvent('resync', 'potential misalignment, shifted by 1 byte');
+                }
+            },
+
+            clearDebugLog() {
+                this.rawChunkCount = 0;
+                this.parsedFrameCount = 0;
+                this.droppedByteCount = 0;
+                this.unknownFrameCount = 0;
+                this.debugEvents = [];
             },
 
             incrementButtonCount(deviceNumber, buttonName) {
@@ -311,6 +407,26 @@
                 return Array.from(new Uint8Array(buffer))
                     .map(b => b.toString(16).padStart(2, '0'))
                     .join('');
+            },
+
+            byteArrayToHex(bytes) {
+                return bytes
+                    .map((byte) => byte.toString(16).padStart(2, '0'))
+                    .join('');
+            },
+
+            recordDebugEvent(type, message) {
+                const timestamp = new Date().toISOString().slice(11, 23);
+                const event = {
+                    timestamp,
+                    type,
+                    message,
+                };
+
+                this.debugEvents.unshift(event);
+                this.debugEvents = this.debugEvents.slice(0, 40);
+
+                console.log(`[serial-debug][${type}] ${timestamp} ${message}`);
             },
 
             async closeConnection() {

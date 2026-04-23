@@ -24,7 +24,10 @@ class SerialCommunication extends Component
 
     public function render(): View
     {
-        return view('livewire.serial-communication');
+        return view('livewire.serial-communication', [
+            'codeLookup' => $this->getCodeLookup(),
+            'codePrefixes' => $this->getCodePrefixes(),
+        ]);
     }
 
     public function updateActiveCode(string $code): void
@@ -75,6 +78,48 @@ class SerialCommunication extends Component
         }
     }
 
+    /**
+     * @return array<string, array{deviceNumber: string, buttonName: string}>
+     */
+    public function getCodeLookup(): array
+    {
+        $lookup = [];
+
+        foreach ($this->devices as $device) {
+            foreach ($this->deviceCodes($device) as $buttonName => $deviceCode) {
+                if ($deviceCode === '') {
+                    continue;
+                }
+
+                $lookup[$deviceCode] = [
+                    'deviceNumber' => $device->device_number,
+                    'buttonName' => $buttonName,
+                ];
+            }
+        }
+
+        return $lookup;
+    }
+
+    /**
+     * @return array{oneByte: string[], twoBytes: string[]}
+     */
+    public function getCodePrefixes(): array
+    {
+        $oneBytePrefixes = [];
+        $twoBytePrefixes = [];
+
+        foreach (array_keys($this->getCodeLookup()) as $code) {
+            $oneBytePrefixes[] = substr($code, 0, 2);
+            $twoBytePrefixes[] = substr($code, 0, 4);
+        }
+
+        return [
+            'oneByte' => array_values(array_unique($oneBytePrefixes)),
+            'twoBytes' => array_values(array_unique($twoBytePrefixes)),
+        ];
+    }
+
     private function resolveButtonName(Device $device, string $code): ?string
     {
         return match ($code) {
@@ -87,5 +132,21 @@ class SerialCommunication extends Component
             $device->code_ruka => 'Ruka',
             default => null,
         };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function deviceCodes(Device $device): array
+    {
+        return [
+            'A' => $device->code_a,
+            'B' => $device->code_b,
+            'C' => $device->code_c,
+            'D' => $device->code_d,
+            'E' => $device->code_e,
+            'F' => $device->code_f,
+            'Ruka' => $device->code_ruka,
+        ];
     }
 }

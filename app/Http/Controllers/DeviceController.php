@@ -3,10 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Device;
-use Illuminate\View\View;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\View\View;
 
 class DeviceController extends Controller
 {
@@ -15,7 +19,7 @@ class DeviceController extends Controller
         return view('import');
     }
 
-    public function import(Request $request)
+    public function import(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             'csv_file' => 'required|file|mimes:csv,txt',
@@ -49,9 +53,8 @@ class DeviceController extends Controller
         return response()->json(['message' => 'Import successful'], 200);
     }
 
-    public function loadExternalDb(Request $request)
+    public function loadExternalDb(Request $request): RedirectResponse
     {
-        // dd($request->file('db_file')->getMimeType());
         $validator = Validator::make($request->all(), [
             'db_file' => 'required|file|mimes:sqlite,db,sqlite3',
         ]);
@@ -63,33 +66,81 @@ class DeviceController extends Controller
         $file = $request->file('db_file');
         $path = $file->storeAs('temp', 'external.sqlite');
 
-        config(['database.connections.external' => [
-            'driver' => 'sqlite',
-            'database' => storage_path('app/private/' . $path),
-        ]]);
+        try {
+            config(['database.connections.external' => [
+                'driver' => 'sqlite',
+                'database' => storage_path('app/private/'.$path),
+            ]]);
 
-        $devices = DB::connection('external')->table('SKDP_ParentZariadenie')->get();
+            $devices = DB::connection('external')->table('SKDP_ParentZariadenie')->get();
 
-        foreach ($devices as $device) {
-            Device::updateOrCreate(
-                ['device_number' => $device->UniqueId],
-                [
-                    'code_a' => $device->A_Code,
-                    'code_b' => $device->B_Code,
-                    'code_c' => $device->C_Code,
-                    'code_d' => $device->D_Code,
-                    'code_e' => $device->E_Code,
-                    'code_f' => $device->F_Code,
-                    'code_ruka' => $device->Ruka_Code,
-                ]
-            );
+            $this->storeExternalDevices($devices);
+        } finally {
+            DB::purge('external');
+            Storage::delete($path);
         }
 
         return redirect()->back()->with('success', 'Externá databáza bola úspešne načítaná.');
     }
 
-    public function showImportForm()
+    public function showImportForm(): View
     {
         return view('import-external-db');
+    }
+
+    public function showDevices(): View
+    {
+        $devices = Device::query()
+            ->orderBy('device_number')
+            ->paginate(24);
+
+        $incompleteDevicesCount = Device::query()
+            ->where('code_a', '')
+            ->orWhere('code_b', '')
+            ->orWhere('code_c', '')
+            ->orWhere('code_d', '')
+            ->orWhere('code_e', '')
+            ->orWhere('code_f', '')
+            ->orWhere('code_ruka', '')
+            ->count();
+
+        return view('devices.index', [
+            'devices' => $devices,
+            'devicesCount' => Device::query()->count(),
+            'incompleteDevicesCount' => $incompleteDevicesCount,
+        ]);
+    }
+
+    private function storeExternalDevices(Collection $devices): void
+    {
+        foreach ($devices as $device) {
+            $deviceNumber = $this->normalizeImportedValue($device->UniqueId);
+
+            if ($deviceNumber === '') {
+                continue;
+            }
+
+            Device::updateOrCreate(
+                ['device_number' => $deviceNumber],
+                [
+                    'code_a' => $this->normalizeImportedValue($device->A_Code),
+                    'code_b' => $this->normalizeImportedValue($device->B_Code),
+                    'code_c' => $this->normalizeImportedValue($device->C_Code),
+                    'code_d' => $this->normalizeImportedValue($device->D_Code),
+                    'code_e' => $this->normalizeImportedValue($device->E_Code),
+                    'code_f' => $this->normalizeImportedValue($device->F_Code),
+                    'code_ruka' => $this->normalizeImportedValue($device->Ruka_Code),
+                ]
+            );
+        }
+    }
+
+    private function normalizeImportedValue(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        return trim((string) $value);
     }
 }

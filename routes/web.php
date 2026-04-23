@@ -21,4 +21,5 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::post('/load-external-db', [DeviceController::class, 'loadExternalDb'])->name('load.external.db');
     Route::get('/import-external-db', [DeviceController::class, 'showImportForm'])->name('show.import.form');
+    Route::get('/devices', [DeviceController::class, 'showDevices'])->name('devices.index');
 });

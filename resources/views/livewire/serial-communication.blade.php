@@ -7,21 +7,69 @@
             <span class="ml-2" x-text="isConnected ? 'Pripojené' : 'Odpojené'"></span>
         </div>
         <x-primary-button @click="connect" x-bind:disabled="isConnected">Pripojiť</x-primary-button>
-        <x-secondary-button @click="startCommunication" x-bind:disabled="!isConnected">Začať
+        <x-secondary-button @click="startCommunication" x-bind:disabled="!isConnected"
+            x-bind:class="isReading ? '!border-green-600 !bg-green-500 !text-white shadow-sm shadow-green-500/30' : ''">Začať
             komunikáciu</x-secondary-button>
         <x-secondary-button @click="stopCommunication" x-bind:disabled="!isConnected">Zastaviť
             komunikáciu</x-secondary-button>
         <x-secondary-button @click="closeConnection" x-bind:disabled="!isConnected">Odpojiť</x-secondary-button>
+        <x-secondary-button @click="resetReceivedData" x-bind:disabled="!hasActiveRows()">Clear</x-secondary-button>
 
         <div class="mt-4">
             <h3>Prijaté dáta:</h3>
-            <pre x-text="receivedData" class="p-4 overflow-auto font-mono rounded-lg max-h-96"></pre>
-        </div>
-        @if ($result)
-            <div class="mt-4">
-                <div class="p-4 overflow-auto font-mono rounded-lg max-h-96">{{ $result }}</div>
+            <div class="mt-3 space-y-3">
+                <div class="overflow-hidden rounded-xl border border-slate-300/70 bg-white/80 shadow-sm">
+                    <div class="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 px-3 py-2 backdrop-blur">
+                        <div class="flex flex-wrap items-center gap-2 text-xs">
+                            <span class="font-semibold">Názov zariadenia:</span>
+                            <span class="rounded-full border border-slate-300/70 px-2.5 py-1 font-mono"
+                                x-text="lastMatchedDeviceNumber || '-'"></span>
+                            <template x-if="lastButtonName">
+                                <span class="text-slate-600" x-text="`Posledné tlačidlo: ${lastButtonName}`"></span>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="max-h-[70vh] overflow-auto">
+                        <table class="min-w-full divide-y divide-slate-200/80 text-xs">
+                            <thead class="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+                                <tr class="text-left uppercase tracking-[0.18em] text-slate-500">
+                                    <th class="px-3 py-2 font-semibold">Číslo zariadenia</th>
+                                    <th class="px-2 py-2 font-semibold">A</th>
+                                    <th class="px-2 py-2 font-semibold">B</th>
+                                    <th class="px-2 py-2 font-semibold">C</th>
+                                    <th class="px-2 py-2 font-semibold">D</th>
+                                    <th class="px-2 py-2 font-semibold">E</th>
+                                    <th class="px-2 py-2 font-semibold">F</th>
+                                    <th class="px-2 py-2 font-semibold">Ruka</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200/70 bg-white/60">
+                                @foreach ($devices as $device)
+                                    <tr wire:key="device-row-{{ $device->id }}"
+                                        x-show="shouldShowRow('{{ $device->device_number }}')"
+                                        x-ref="deviceRow{{ $device->device_number }}"
+                                        x-transition.opacity.duration.200ms
+                                        class="text-slate-700">
+                                        <td class="px-3 py-2 font-mono text-[11px] font-semibold">{{ $device->device_number }}</td>
+                                        @foreach (['A', 'B', 'C', 'D', 'E', 'F', 'Ruka'] as $button)
+                                            <td class="px-2 py-1.5">
+                                                <div class="flex justify-center">
+                                                    <span
+                                                        class="inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold transition-all duration-200"
+                                                        :class="getIndicatorClasses('{{ $device->device_number }}', '{{ $button }}')"
+                                                        x-text="getButtonCount('{{ $device->device_number }}', '{{ $button }}') || ''"></span>
+                                                </div>
+                                            </td>
+                                        @endforeach
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
-        @endif
+        </div>
     </div>
 </div>
 
@@ -40,6 +88,9 @@
             reader: null,
             writer: null,
             isReading: false,
+            lastMatchedDeviceNumber: null,
+            lastButtonName: null,
+            deviceButtonCounts: {},
 
             init() {
                 if ('serial' in navigator) {
@@ -107,6 +158,7 @@
                     await this.sendHexCommand("5a80da", 3);
                     console.log("Communication started");
 
+                    this.resetReceivedData();
                     this.isReading = true;
                     this.readData();
                 } catch (error) {
@@ -136,9 +188,6 @@
 
             async readData() {
                 console.log('Starting to read data...');
-                let deviceCodes = [];
-                let deviceCount = 0;
-                let lastCode = null;
 
                 try {
                     while (this.isReading) {
@@ -156,31 +205,12 @@
                                 const hexData = this.arrayBufferToHex(value);
                                 console.log("Received data (hex):", hexData);
 
-                                // Ignoruj duplicitný kód
-                                if (hexData === lastCode) {
-                                    console.log("Ignoring duplicate code:", hexData);
-                                    continue;
-                                }
-                                lastCode = hexData;
-
-                                deviceCodes.push(hexData);
-
                                 const checkResult = await this.$wire.checkCode(hexData);
-                                // this.receivedData += checkResult + '\n';
 
-                                if (deviceCodes.length === 1) {
-                                    deviceCount++;
-                                    this.receivedData += `Device ${deviceCount}: ${hexData}`;
-                                } else if (deviceCodes.length < 7) {
-                                    this.receivedData = this.receivedData.slice(0, -
-                                        1); // Odstráni posledný znak ('\n')
-                                    this.receivedData += `, ${hexData}`;
-                                } else {
-                                    this.receivedData = this.receivedData.slice(0, -
-                                        1); // Odstráni posledný znak ('\n')
-                                    this.receivedData += `, ${hexData}\n`;
-                                    deviceCodes = [];
-                                    lastCode = null; // Reset lastCode pre nové zariadenie
+                                if (checkResult?.found && checkResult.deviceNumber && checkResult.buttonName) {
+                                    this.lastMatchedDeviceNumber = checkResult.deviceNumber;
+                                    this.lastButtonName = checkResult.buttonName;
+                                    this.incrementButtonCount(checkResult.deviceNumber, checkResult.buttonName);
                                 }
                             }
                         } finally {
@@ -193,12 +223,55 @@
                     console.error('Error reading data:', error);
                 }
 
-                // Ak zostali nejaké kódy po ukončení čítania, pridáme nový riadok
-                if (deviceCodes.length > 0 && deviceCodes.length < 7) {
-                    this.receivedData += '\n';
+                console.log('Stopped reading data');
+            },
+
+            resetReceivedData() {
+                this.receivedData = '';
+                this.lastMatchedDeviceNumber = null;
+                this.lastButtonName = null;
+                this.deviceButtonCounts = {};
+            },
+
+            incrementButtonCount(deviceNumber, buttonName) {
+                if (!this.deviceButtonCounts[deviceNumber]) {
+                    this.deviceButtonCounts[deviceNumber] = {};
                 }
 
-                console.log('Stopped reading data');
+                const currentCount = this.deviceButtonCounts[deviceNumber][buttonName] || 0;
+                this.deviceButtonCounts[deviceNumber][buttonName] = currentCount + 1;
+                this.scrollToActiveRow(deviceNumber);
+            },
+
+            getButtonCount(deviceNumber, buttonName) {
+                return this.deviceButtonCounts[deviceNumber]?.[buttonName] || 0;
+            },
+
+            shouldShowRow(deviceNumber) {
+                return Object.keys(this.deviceButtonCounts[deviceNumber] || {}).length > 0;
+            },
+
+            hasActiveRows() {
+                return Object.keys(this.deviceButtonCounts).some((deviceNumber) => this.shouldShowRow(deviceNumber));
+            },
+
+            getIndicatorClasses(deviceNumber, buttonName) {
+                return this.getButtonCount(deviceNumber, buttonName) > 0 ?
+                    'border-green-600 bg-green-500 text-white shadow-sm shadow-green-500/30' :
+                    'border-slate-300 bg-slate-100 text-slate-400';
+            },
+
+            scrollToActiveRow(deviceNumber) {
+                this.$nextTick(() => {
+                    const row = this.$refs[`deviceRow${deviceNumber}`];
+
+                    if (row) {
+                        row.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'nearest',
+                        });
+                    }
+                });
             },
 
             async sendHexCommand(hexString, length) {

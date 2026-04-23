@@ -160,37 +160,30 @@ This project has domain-specific skills available. You MUST activate the relevan
 
 - If you receive an "Illuminate\Foundation\ViteException: Unable to locate file in Vite manifest" error, you can run `npm run build` or ask the user to run `npm run dev` or `composer run dev`.
 
-=== laravel/v11 rules ===
+=== laravel/v12 rules ===
 
-# Laravel 11
+# Laravel 12
 
 - CRITICAL: ALWAYS use `search-docs` tool for version-specific Laravel documentation and updated code examples.
-- Laravel 11 brought a new streamlined file structure which this project now uses.
+- Since Laravel 11, Laravel has a new streamlined file structure which this project uses.
 
-## Laravel 11 Structure
+## Laravel 12 Structure
 
-- In Laravel 11, middleware are no longer registered in `app/Http/Kernel.php`.
+- In Laravel 12, middleware are no longer registered in `app/Http/Kernel.php`.
 - Middleware are configured declaratively in `bootstrap/app.php` using `Application::configure()->withMiddleware()`.
 - `bootstrap/app.php` is the file to register middleware, exceptions, and routing files.
 - `bootstrap/providers.php` contains application specific service providers.
-- No app\Console\Kernel.php - use `bootstrap/app.php` or `routes/console.php` for console configuration.
-- Commands auto-register - files in `app/Console/Commands/` are automatically available and do not require manual registration.
+- The `app/Console/Kernel.php` file no longer exists; use `bootstrap/app.php` or `routes/console.php` for console configuration.
+- Console commands in `app/Console/Commands/` are automatically available and do not require manual registration.
 
 ## Database
 
 - When modifying a column, the migration must include all of the attributes that were previously defined on the column. Otherwise, they will be dropped and lost.
-- Laravel 11 allows limiting eagerly loaded records natively, without external packages: `$query->latest()->limit(10);`.
+- Laravel 12 allows limiting eagerly loaded records natively, without external packages: `$query->latest()->limit(10);`.
 
 ### Models
 
 - Casts can and likely should be set in a `casts()` method on a model rather than the `$casts` property. Follow existing conventions from other models.
-
-## New Artisan Commands
-
-- List Artisan commands using Boost's MCP tool, if available. New commands available in Laravel 11:
-    - `php artisan make:enum`
-    - `php artisan make:class`
-    - `php artisan make:interface`
 
 === livewire/core rules ===
 
@@ -213,8 +206,8 @@ This project has domain-specific skills available. You MUST activate the relevan
 
 # Laravel Pint Code Formatter
 
-- If you have modified any PHP files, you must run `vendor/bin/pint --dirty` before finalizing changes to ensure your code matches the project's expected style.
-- Do not run `vendor/bin/pint --test`, simply run `vendor/bin/pint` to fix any formatting issues.
+- If you have modified any PHP files, you must run `vendor/bin/pint --dirty --format agent` before finalizing changes to ensure your code matches the project's expected style.
+- Do not run `vendor/bin/pint --test --format agent`, simply run `vendor/bin/pint --format agent` to fix any formatting issues.
 
 === pest/core rules ===
 

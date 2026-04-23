@@ -3,71 +3,89 @@
 namespace App\Livewire;
 
 use App\Models\Device;
+use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Livewire\Component;
 
 class SerialCommunication extends Component
 {
-    public $result = '';
-    public $devices;
-    public $activeCode = null;
+    public string $result = '';
 
-    public function mount()
+    public EloquentCollection $devices;
+
+    public ?string $activeCode = null;
+
+    public function mount(): void
     {
-        $this->devices = Device::all();
+        $this->devices = Device::query()
+            ->orderBy('device_number')
+            ->get();
     }
 
-    public function render()
+    public function render(): View
     {
         return view('livewire.serial-communication');
     }
 
-    public function updateActiveCode($code)
+    public function updateActiveCode(string $code): void
     {
         $this->activeCode = $code;
     }
 
-    public function checkCode($code)
+    /**
+     * @return array{found: bool, deviceNumber: string|null, buttonName: string|null, code: string, message: string}
+     */
+    public function checkCode(string $code): array
     {
-        $device = Device::where('code_a', $code)
-            ->orWhere('code_b', $code)
-            ->orWhere('code_c', $code)
-            ->orWhere('code_d', $code)
-            ->orWhere('code_e', $code)
-            ->orWhere('code_f', $code)
-            ->orWhere('code_ruka', $code)
-            ->first();
+        $device = $this->devices->first(function (Device $device) use ($code): bool {
+            return in_array($code, [
+                $device->code_a,
+                $device->code_b,
+                $device->code_c,
+                $device->code_d,
+                $device->code_e,
+                $device->code_f,
+                $device->code_ruka,
+            ], true);
+        });
 
         if ($device) {
             $this->updateActiveCode($code);
-            // Určte názov stlačeného tlačidla na základe kódu
-            $buttonName = '';
-            switch ($code) {
-                case $device->code_a:
-                    $buttonName = 'A';
-                    break;
-                case $device->code_b:
-                    $buttonName = 'B';
-                    break;
-                case $device->code_c:
-                    $buttonName = 'C';
-                    break;
-                case $device->code_d:
-                    $buttonName = 'D';
-                    break;
-                case $device->code_e:
-                    $buttonName = 'E';
-                    break;
-                case $device->code_f:
-                    $buttonName = 'F';
-                    break;
-                case $device->code_ruka:
-                    $buttonName = 'Ruka';
-                    break;
-            }
+            $buttonName = $this->resolveButtonName($device, $code);
 
-            $this->result = "Názov zariadenia: " . $device->device_number . ", Stlačená hodnota: " . $buttonName . " (" . $code . ")";
+            $this->result = 'Názov zariadenia: '.$device->device_number.', Stlačená hodnota: '.$buttonName.' ('.$code.')';
+
+            return [
+                'found' => true,
+                'deviceNumber' => $device->device_number,
+                'buttonName' => $buttonName,
+                'code' => $code,
+                'message' => $this->result,
+            ];
         } else {
-            $this->result = "Kód " . $code . " sa nenašiel";
+            $this->result = 'Kód '.$code.' sa nenašiel';
+
+            return [
+                'found' => false,
+                'deviceNumber' => null,
+                'buttonName' => null,
+                'code' => $code,
+                'message' => $this->result,
+            ];
         }
+    }
+
+    private function resolveButtonName(Device $device, string $code): ?string
+    {
+        return match ($code) {
+            $device->code_a => 'A',
+            $device->code_b => 'B',
+            $device->code_c => 'C',
+            $device->code_d => 'D',
+            $device->code_e => 'E',
+            $device->code_f => 'F',
+            $device->code_ruka => 'Ruka',
+            default => null,
+        };
     }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use LogicException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +21,19 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        if (! app()->environment('testing')) {
+            return;
+        }
+
+        $defaultConnection = config('database.default');
+        $database = config("database.connections.{$defaultConnection}.database");
+
+        if ($defaultConnection !== 'sqlite' || $database !== ':memory:') {
+            throw new LogicException(
+                'Tests must use an in-memory SQLite database. Refusing to boot with any other database target.'
+            );
+        }
+
+        DB::purge($defaultConnection);
     }
 }

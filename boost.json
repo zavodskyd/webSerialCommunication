@@ -1,0 +1,17 @@
+{
+    "agents": [
+        "codex"
+    ],
+    "guidelines": true,
+    "mcp": true,
+    "nightwatch_mcp": false,
+    "sail": false,
+    "skills": [
+        "laravel-best-practices",
+        "livewire-development",
+        "volt-development",
+        "mcp-development",
+        "pest-testing",
+        "tailwindcss-development"
+    ]
+}

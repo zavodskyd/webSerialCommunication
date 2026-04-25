@@ -33,6 +33,9 @@ new class extends Component
                     <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('votings.index')" :active="request()->routeIs('votings.*')" wire:navigate>
+                        {{ __('Hlasovania') }}
+                    </x-nav-link>
                     <x-nav-link :href="route('import.devices')" :active="request()->routeIs('import.devices')" wire:navigate>
                         {{ __('Import CSV') }}
                     </x-nav-link>
@@ -93,6 +96,9 @@ new class extends Component
         <div class="pt-2 pb-3 space-y-1">
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
                 {{ __('Dashboard') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('votings.index')" :active="request()->routeIs('votings.*')" wire:navigate>
+                {{ __('Hlasovania') }}
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('import.devices')" :active="request()->routeIs('import.devices')" wire:navigate>
                 {{ __('Import CSV') }}

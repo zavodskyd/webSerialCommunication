@@ -218,3 +218,5 @@ This project has domain-specific skills available. You MUST activate the relevan
 - Do NOT delete tests without approval.
 
 </laravel-boost-guidelines>
+
+@RTK.md

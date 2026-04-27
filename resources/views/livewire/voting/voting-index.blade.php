@@ -125,6 +125,9 @@
                             >
                                 Export stlačených možností
                             </a>
+                            <button type="button" wire:click="copyVoting({{ $voting->id }})" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100">
+                                Kopírovať
+                            </button>
                         </div>
                     </div>
                 @empty

@@ -56,6 +56,73 @@ test('user can create a new voting from the index', function () {
     expect(Voting::query()->where('name', 'Zhromaždenie delegátov 2026')->exists())->toBeTrue();
 });
 
+test('user can copy a prepared voting with questions options and device weights', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
+        'title' => 'Hlasovanie delegátov',
+        'header_text' => 'Bratislava',
+        'question_label' => 'Bod',
+        'logo_path' => 'voting-logos/logo.png',
+        'default_response_time_seconds' => 45,
+        'auto_show_results' => false,
+        'status' => 'live',
+    ]);
+
+    $question = $voting->createQuestionWithDefaults(
+        order: 1,
+        label: 'Bod 1',
+        text: 'Schválenie programu',
+        responseTimeSeconds: 35,
+    );
+
+    $question->update([
+        'status' => 'closed',
+    ]);
+
+    $device = createVotingDevice('001');
+
+    VotingAttendee::query()->create([
+        'voting_id' => $voting->id,
+        'device_id' => $device->id,
+        'weight' => 6,
+        'is_present' => true,
+        'can_vote' => true,
+    ]);
+
+    Livewire::test(VotingIndex::class)
+        ->call('copyVoting', $voting->id)
+        ->assertRedirect();
+
+    $copiedVoting = Voting::query()
+        ->where('name', 'Valné zhromaždenie - kópia')
+        ->firstOrFail();
+
+    expect($copiedVoting)
+        ->status->toBe('draft')
+        ->title->toBe('Hlasovanie delegátov')
+        ->header_text->toBe('Bratislava')
+        ->question_label->toBe('Bod')
+        ->logo_path->toBe('voting-logos/logo.png')
+        ->default_response_time_seconds->toBe(45)
+        ->auto_show_results->toBeFalse();
+
+    $copiedQuestion = $copiedVoting->questions()->firstOrFail();
+
+    expect($copiedQuestion)
+        ->status->toBe('draft')
+        ->order->toBe(1)
+        ->label->toBe('Bod 1')
+        ->text->toBe('Schválenie programu')
+        ->response_time_seconds->toBe(35);
+
+    expect($copiedQuestion->options()->pluck('key')->all())->toBe(['A', 'B', 'C']);
+
+    expect((float) VotingAttendee::query()
+        ->where('voting_id', $copiedVoting->id)
+        ->where('device_id', $device->id)
+        ->value('weight'))->toBe(6.0);
+});
+
 test('user can update voting details and generate questions', function () {
     Storage::fake('public');
 

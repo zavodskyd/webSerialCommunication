@@ -62,6 +62,25 @@ test('start returns immediate console state for native serial runtime', function
     ]);
 });
 
+test('native serial runtime separates connection from transceiver collection', function () {
+    $consoleView = file_get_contents(resource_path('views/livewire/voting/voting-console.blade.php'));
+
+    expect($consoleView)
+        ->toContain('wire:ignore')
+        ->toContain('await initializeDevice();')
+        ->toContain('const startQuestionFromFrontend = async () => {')
+        ->toContain('await startCommunication();')
+        ->toContain("await sendHexCommand('5b80db', 3);")
+        ->toContain("await sendHexCommand('5a80da', 3);")
+        ->toContain('const finishQuestionFromFrontend = async (remainingSeconds = state.remainingSeconds) => {')
+        ->toContain('await stopCommunication();')
+        ->toContain("window.addEventListener('pagehide', disconnectBeforeLeavingConsole);")
+        ->toContain("document.addEventListener('livewire:navigating', disconnectBeforeLeavingConsole);")
+        ->not->toContain('wire:click="finishQuestion"');
+
+    expect(substr_count($consoleView, 'await startCommunication();'))->toBe(2);
+});
+
 test('console persists runtime state for presentation polling', function () {
     [, $voting, $question] = createConsoleFixture();
 

@@ -16,7 +16,8 @@ class NativeAppServiceProvider implements ProvidesPhpIni
     {
         app(NativeDatabaseBootstrapper::class)->seedFromBundledDatabaseIfEmpty();
 
-        Window::open();
+        Window::open()
+            ->maximized();
     }
 
     /**

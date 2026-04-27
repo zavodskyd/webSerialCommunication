@@ -13,7 +13,7 @@
             </div>
 
             <div class="grid gap-3 sm:grid-cols-3">
-                <div class="rounded-[1.5rem] bg-white px-5 py-4 shadow-sm ring-1 ring-slate-200">
+                <div wire:ignore class="rounded-[1.5rem] bg-white px-5 py-4 shadow-sm ring-1 ring-slate-200">
                     <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">USB</p>
                     <div class="mt-2 flex items-center gap-3">
                         <span data-usb-indicator class="h-3 w-3 rounded-full bg-rose-500"></span>
@@ -108,7 +108,7 @@
                             <button type="button" wire:click="pauseQuestion" data-pause-question disabled class="rounded-2xl bg-amber-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60">
                                 Pauza
                             </button>
-                            <button type="button" wire:click="finishQuestion" data-finish-question disabled class="rounded-2xl bg-rose-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-60">
+                            <button type="button" data-finish-question disabled class="rounded-2xl bg-rose-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-60">
                                 Ukončiť otázku
                             </button>
                             <button type="button" wire:click="showResults" @disabled($collectorEnabled || $timerRunning || $resultsVisible) class="rounded-2xl bg-sky-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60">
@@ -149,7 +149,7 @@
             </section>
 
             <aside class="space-y-6">
-                <div class="rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                <div wire:ignore class="rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-slate-200">
                     <h2 class="text-lg font-semibold text-slate-900">USB ovládanie</h2>
                     <div class="mt-4 flex flex-wrap gap-3">
                         <button type="button" data-usb-connect class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60">
@@ -266,6 +266,7 @@
         startingCommunication: false,
         stoppingCommunication: false,
         syncingRemainingSeconds: false,
+        disconnecting: false,
         lastSyncedRemainingSeconds: @js($remainingSeconds),
         pendingVoteCodes: [],
         preparingQuestionStart: false,
@@ -313,7 +314,7 @@
         if (collectorStatus) {
             collectorStatus.textContent = state.collectorEnabled
                 ? 'Aktívny'
-                : (state.preparingQuestionStart || state.isReading ? 'Aktivuje sa' : 'Zastavený');
+                : (state.preparingQuestionStart ? 'Aktivuje sa' : 'Zastavený');
         }
 
         if (timerStatus) {
@@ -417,6 +418,10 @@
             await stopCommunication();
         }
 
+        if (!state.collectorEnabled && !state.preparingQuestionStart) {
+            state.pendingVoteCodes = [];
+        }
+
         if (state.collectorEnabled) {
             state.preparingQuestionStart = false;
             await flushPendingVoteCodes();
@@ -468,7 +473,7 @@
 
                 state.finishingTimer = true;
                 clearInterval(state.timerId);
-                await componentWire.finishQuestion(0);
+                await finishQuestionFromFrontend(0);
                 state.finishingTimer = false;
 
                 return;
@@ -506,10 +511,6 @@
 
             await initializeDevice();
 
-            if (state.collectorEnabled && !state.isReading) {
-                await startCommunication();
-            }
-
             renderConsoleState();
         } catch (error) {
             console.error('Failed to connect:', error);
@@ -543,6 +544,23 @@
         } catch (error) {
             state.preparingQuestionStart = false;
             console.error('Failed to start question:', error);
+            renderConsoleState();
+        }
+    };
+
+    const finishQuestionFromFrontend = async (remainingSeconds = state.remainingSeconds) => {
+        if (!state.isConnected || !state.collectorEnabled) {
+            return;
+        }
+
+        stopTimer();
+
+        try {
+            await stopCommunication();
+            await componentWire.finishQuestion(remainingSeconds);
+        } catch (error) {
+            console.error('Failed to finish question:', error);
+        } finally {
             renderConsoleState();
         }
     };
@@ -670,7 +688,10 @@
             state.incomingBytes.splice(0, state.messageByteLength);
 
             if (!state.collectorEnabled) {
-                state.pendingVoteCodes.push(hexData);
+                if (state.preparingQuestionStart) {
+                    state.pendingVoteCodes.push(hexData);
+                }
+
                 renderPendingVoteCode(hexData);
 
                 continue;
@@ -739,6 +760,11 @@
     const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
     const closeConnection = async () => {
+        if (state.disconnecting) {
+            return;
+        }
+
+        state.disconnecting = true;
         stopTimer();
 
         if (state.isReading) {
@@ -764,7 +790,14 @@
         }
 
         state.isConnected = false;
+        state.disconnecting = false;
         renderConsoleState();
+    };
+
+    const disconnectBeforeLeavingConsole = () => {
+        if (state.isConnected) {
+            void closeConnection();
+        }
     };
 
     document.addEventListener('click', (event) => {
@@ -781,6 +814,11 @@
             startQuestionFromFrontend();
         }
 
+        if (event.target.closest('[data-finish-question]')) {
+            event.preventDefault();
+            finishQuestionFromFrontend();
+        }
+
         if (event.target.closest('[data-usb-disconnect]')) {
             closeConnection();
         }
@@ -790,6 +828,10 @@
         const detail = event.detail?.[0] ?? event.detail ?? {};
         applyConsoleState(detail);
     });
+
+    window.addEventListener('pagehide', disconnectBeforeLeavingConsole);
+    window.addEventListener('beforeunload', disconnectBeforeLeavingConsole);
+    document.addEventListener('livewire:navigating', disconnectBeforeLeavingConsole);
 
     if (!('serial' in navigator)) {
         console.warn('Web Serial API not supported in this browser.');

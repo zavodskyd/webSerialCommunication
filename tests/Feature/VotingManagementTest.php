@@ -5,18 +5,13 @@ use App\Livewire\Voting\VotingEditor;
 use App\Livewire\Voting\VotingIndex;
 use App\Livewire\Voting\VotingPresentation;
 use App\Models\Device;
-use App\Models\User;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
-test('verified user can view voting pages', function () {
-    $user = User::factory()->create([
-        'email_verified_at' => now(),
-    ]);
-
+test('visitor can view voting pages', function () {
     $voting = Voting::query()->create([
         'name' => 'Valné zhromaždenie',
     ]);
@@ -28,27 +23,23 @@ test('verified user can view voting pages', function () {
         responseTimeSeconds: 30,
     );
 
-    $this->actingAs($user)
-        ->get(route('votings.index'))
+    $this->get(route('votings.index'))
         ->assertOk()
         ->assertSeeLivewire(VotingIndex::class)
         ->assertSeeText('Správa hlasovaní a otázok');
 
-    $this->actingAs($user)
-        ->get(route('votings.edit', $voting))
+    $this->get(route('votings.edit', $voting))
         ->assertOk()
         ->assertSeeLivewire(VotingEditor::class)
         ->assertSeeText('Detail hlasovania');
 
-    $this->actingAs($user)
-        ->get(route('votings.presentation', $voting))
+    $this->get(route('votings.presentation', $voting))
         ->assertOk()
         ->assertSeeLivewire(VotingPresentation::class)
         ->assertSeeText('Schválenie programu')
         ->assertDontSeeText('Čas');
 
-    $this->actingAs($user)
-        ->get(route('votings.console', $voting))
+    $this->get(route('votings.console', $voting))
         ->assertOk()
         ->assertSeeLivewire(VotingConsole::class)
         ->assertSeeText('Operátorská konzola')
@@ -56,25 +47,8 @@ test('verified user can view voting pages', function () {
         ->assertSee(route('votings.presentation', $voting));
 });
 
-test('guest cannot access voting management pages', function () {
-    $voting = Voting::query()->create([
-        'name' => 'Valné zhromaždenie',
-    ]);
-
-    $this->get(route('votings.index'))
-        ->assertRedirect('/login');
-
-    $this->get(route('votings.edit', $voting))
-        ->assertRedirect('/login');
-});
-
 test('user can create a new voting from the index', function () {
-    $user = User::factory()->create([
-        'email_verified_at' => now(),
-    ]);
-
-    Livewire::actingAs($user)
-        ->test(VotingIndex::class)
+    Livewire::test(VotingIndex::class)
         ->set('name', 'Zhromaždenie delegátov 2026')
         ->call('createVoting')
         ->assertRedirect();
@@ -83,10 +57,6 @@ test('user can create a new voting from the index', function () {
 });
 
 test('user can update voting details and generate questions', function () {
-    $user = User::factory()->create([
-        'email_verified_at' => now(),
-    ]);
-
     Storage::fake('public');
 
     $voting = Voting::query()->create([
@@ -95,8 +65,7 @@ test('user can update voting details and generate questions', function () {
 
     $logo = UploadedFile::fake()->image('skau.png');
 
-    Livewire::actingAs($user)
-        ->test(VotingEditor::class, ['voting' => $voting])
+    Livewire::test(VotingEditor::class, ['voting' => $voting])
         ->set('title', 'Hlasovanie delegátov')
         ->set('headerText', 'DoubleTree by Hilton, Bratislava')
         ->set('questionLabel', 'Hlasovanie')
@@ -123,10 +92,6 @@ test('user can update voting details and generate questions', function () {
 });
 
 test('voting logo is served through the application in native compatible storage', function () {
-    $user = User::factory()->create([
-        'email_verified_at' => now(),
-    ]);
-
     Storage::fake('public');
 
     $path = UploadedFile::fake()
@@ -138,17 +103,12 @@ test('voting logo is served through the application in native compatible storage
         'logo_path' => $path,
     ]);
 
-    $this->actingAs($user)
-        ->get(route('votings.logo', $voting))
+    $this->get(route('votings.logo', $voting))
         ->assertOk()
         ->assertHeader('content-type', 'image/png');
 });
 
 test('user can edit and delete an existing question', function () {
-    $user = User::factory()->create([
-        'email_verified_at' => now(),
-    ]);
-
     $voting = Voting::query()->create([
         'name' => 'Valné zhromaždenie',
     ]);
@@ -166,8 +126,7 @@ test('user can edit and delete an existing question', function () {
         ['key' => 'C', 'label' => 'ZDRŽAL SA', 'sort_order' => 3],
     ]);
 
-    Livewire::actingAs($user)
-        ->test(VotingEditor::class, ['voting' => $voting])
+    Livewire::test(VotingEditor::class, ['voting' => $voting])
         ->set('questionRows.0.text', 'Schválenie programu')
         ->set('questionRows.0.response_time_seconds', 45)
         ->call('saveQuestion', $question->id)
@@ -176,11 +135,34 @@ test('user can edit and delete an existing question', function () {
     expect($voting->questions()->count())->toBe(0);
 });
 
-test('user can assign vote weights to devices for a voting', function () {
-    $user = User::factory()->create([
-        'email_verified_at' => now(),
+test('user can change voting question order', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
     ]);
 
+    $firstQuestion = $voting->createQuestionWithDefaults(
+        order: 1,
+        label: 'Hlasovanie 1',
+        text: 'Prvá otázka',
+        responseTimeSeconds: 30,
+    );
+
+    $secondQuestion = $voting->createQuestionWithDefaults(
+        order: 2,
+        label: 'Hlasovanie 2',
+        text: 'Druhá otázka',
+        responseTimeSeconds: 30,
+    );
+
+    Livewire::test(VotingEditor::class, ['voting' => $voting])
+        ->set('questionRows.1.order', 10)
+        ->call('saveQuestion', $secondQuestion->id);
+
+    expect($secondQuestion->fresh()->order)->toBe(10);
+    expect($firstQuestion->fresh()->order)->toBe(1);
+});
+
+test('user can assign vote weights to devices for a voting', function () {
     $voting = Voting::query()->create([
         'name' => 'Valné zhromaždenie',
     ]);
@@ -207,8 +189,7 @@ test('user can assign vote weights to devices for a voting', function () {
         'code_ruka' => '',
     ]);
 
-    Livewire::actingAs($user)
-        ->test(VotingEditor::class, ['voting' => $voting])
+    Livewire::test(VotingEditor::class, ['voting' => $voting])
         ->assertSet('deviceWeightRows.0.weight', '0.00')
         ->set('deviceWeightRows.0.weight', '5')
         ->set('deviceWeightRows.1.weight', '0')
@@ -225,11 +206,77 @@ test('user can assign vote weights to devices for a voting', function () {
         ->value('weight'))->toBe(0.0);
 });
 
-test('presentation reads runtime state and displays voting result chart', function () {
-    $user = User::factory()->create([
-        'email_verified_at' => now(),
+test('user can bulk assign vote weights by device number range', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
     ]);
 
+    $firstDevice = createVotingDevice('001');
+    $secondDevice = createVotingDevice('002');
+    $thirdDevice = createVotingDevice('003');
+
+    Livewire::test(VotingEditor::class, ['voting' => $voting])
+        ->set('bulkDeviceWeight', '7')
+        ->set('bulkDeviceCount', 2)
+        ->call('assignBulkDeviceWeights');
+
+    expect((float) VotingAttendee::query()
+        ->where('voting_id', $voting->id)
+        ->where('device_id', $firstDevice->id)
+        ->value('weight'))->toBe(7.0);
+
+    expect((float) VotingAttendee::query()
+        ->where('voting_id', $voting->id)
+        ->where('device_id', $secondDevice->id)
+        ->value('weight'))->toBe(7.0);
+
+    expect(VotingAttendee::query()
+        ->where('voting_id', $voting->id)
+        ->where('device_id', $thirdDevice->id)
+        ->exists())->toBeFalse();
+});
+
+test('user can export and import device vote weights', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
+    ]);
+
+    $firstDevice = createVotingDevice('001');
+    $secondDevice = createVotingDevice('002');
+
+    VotingAttendee::query()->create([
+        'voting_id' => $voting->id,
+        'device_id' => $firstDevice->id,
+        'weight' => 5,
+        'is_present' => true,
+        'can_vote' => true,
+    ]);
+
+    Livewire::test(VotingEditor::class, ['voting' => $voting])
+        ->call('exportDeviceWeights')
+        ->assertFileDownloaded('valne-zhromazdenie-vahy-zariadeni.csv');
+
+    $import = UploadedFile::fake()->createWithContent(
+        'weights.csv',
+        "device_number,weight\n001,3\n002,8\n999,10\n",
+    );
+
+    Livewire::test(VotingEditor::class, ['voting' => $voting])
+        ->set('deviceWeightsImport', $import)
+        ->call('importDeviceWeights');
+
+    expect((float) VotingAttendee::query()
+        ->where('voting_id', $voting->id)
+        ->where('device_id', $firstDevice->id)
+        ->value('weight'))->toBe(3.0);
+
+    expect((float) VotingAttendee::query()
+        ->where('voting_id', $voting->id)
+        ->where('device_id', $secondDevice->id)
+        ->value('weight'))->toBe(8.0);
+});
+
+test('presentation reads runtime state and displays voting result chart', function () {
     $voting = Voting::query()->create([
         'name' => 'Valné zhromaždenie',
         'title' => 'Hlasovanie delegátov',
@@ -268,8 +315,7 @@ test('presentation reads runtime state and displays voting result chart', functi
     $question->update(['status' => 'closed']);
     $voting->update(['current_voting_question_id' => $question->id]);
 
-    $this->actingAs($user)
-        ->get(route('votings.presentation', $voting))
+    $this->get(route('votings.presentation', $voting))
         ->assertOk()
         ->assertDontSee('bg-slate-100')
         ->assertSee('backdrop-blur-2xl')
@@ -284,10 +330,6 @@ test('presentation reads runtime state and displays voting result chart', functi
 });
 
 test('user can open printable exports for closed voting questions', function () {
-    $user = User::factory()->create([
-        'email_verified_at' => now(),
-    ]);
-
     $voting = Voting::query()->create([
         'name' => 'Valné zhromaždenie',
     ]);
@@ -330,14 +372,12 @@ test('user can open printable exports for closed voting questions', function () 
     $closedQuestion->update(['status' => 'closed']);
     $openQuestion->update(['status' => 'live']);
 
-    $this->actingAs($user)
-        ->get(route('votings.index'))
+    $this->get(route('votings.index'))
         ->assertOk()
         ->assertSeeText('Export výsledkov')
         ->assertSeeText('Export stlačených možností');
 
-    $this->actingAs($user)
-        ->get(route('votings.exports.results', $voting))
+    $this->get(route('votings.exports.results', $voting))
         ->assertOk()
         ->assertDontSeeText('Valné zhromaždenie')
         ->assertSee('print:h-[186mm]')
@@ -348,8 +388,7 @@ test('user can open printable exports for closed voting questions', function () 
         ->assertSeeText('5')
         ->assertDontSeeText('Otvorená otázka');
 
-    $this->actingAs($user)
-        ->get(route('votings.exports.pressed-options', $voting))
+    $this->get(route('votings.exports.pressed-options', $voting))
         ->assertOk()
         ->assertSeeText('Export stlačených možností')
         ->assertSeeText('Názov hlasovania')
@@ -359,3 +398,17 @@ test('user can open printable exports for closed voting questions', function () 
         ->assertSeeText('A')
         ->assertDontSeeText('Otvorená otázka');
 });
+
+function createVotingDevice(string $deviceNumber): Device
+{
+    return Device::query()->create([
+        'device_number' => $deviceNumber,
+        'code_a' => '20'.$deviceNumber.'a1',
+        'code_b' => '20'.$deviceNumber.'b1',
+        'code_c' => '20'.$deviceNumber.'c1',
+        'code_d' => '',
+        'code_e' => '',
+        'code_f' => '',
+        'code_ruka' => '',
+    ]);
+}

@@ -203,6 +203,7 @@ class VotingConsole extends Component
 
         $previousQuestion = $this->questions()
             ->where('order', '<', $this->currentQuestion()->order)
+            ->reorder()
             ->orderByDesc('order')
             ->first();
 

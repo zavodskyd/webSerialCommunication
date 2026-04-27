@@ -8,10 +8,12 @@ use App\Models\VotingAttendee;
 use App\Models\VotingQuestion;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class VotingEditor extends Component
 {
@@ -56,6 +58,15 @@ class VotingEditor extends Component
      * @var array<int, array{id: int, device_number: string, weight: string}>
      */
     public array $deviceWeightRows = [];
+
+    #[Validate('nullable|file|max:1024')]
+    public ?TemporaryUploadedFile $deviceWeightsImport = null;
+
+    #[Validate('required|numeric|min:0|max:999999')]
+    public string $bulkDeviceWeight = '1';
+
+    #[Validate('required|integer|min:1|max:999999')]
+    public int $bulkDeviceCount = 1;
 
     public function mount(Voting $voting): void
     {
@@ -144,17 +155,20 @@ class VotingEditor extends Component
         validator(
             ['row' => $row],
             [
+                'row.order' => ['required', 'integer', 'min:1', 'max:999999'],
                 'row.text' => ['required', 'string', 'max:2000'],
                 'row.response_time_seconds' => ['required', 'integer', 'min:5', 'max:600'],
             ],
             [],
             [
+                'row.order' => 'poradie otázky',
                 'row.text' => 'text otázky',
                 'row.response_time_seconds' => 'čas odpovede',
             ],
         )->validate();
 
         $question->update([
+            'order' => $row['order'],
             'text' => $row['text'],
             'response_time_seconds' => $row['response_time_seconds'],
         ]);
@@ -203,6 +217,99 @@ class VotingEditor extends Component
 
         $this->loadDeviceWeights();
         session()->flash('status', 'Počty hlasov zariadení boli uložené.');
+    }
+
+    public function assignBulkDeviceWeights(): void
+    {
+        $validated = $this->validate([
+            'bulkDeviceWeight' => ['required', 'numeric', 'min:0', 'max:999999'],
+            'bulkDeviceCount' => ['required', 'integer', 'min:1', 'max:999999'],
+        ]);
+
+        $devices = Device::query()
+            ->get()
+            ->filter(fn (Device $device): bool => $this->deviceNumberIsInRange(
+                deviceNumber: $device->device_number,
+                maxDeviceNumber: $validated['bulkDeviceCount'],
+            ));
+
+        foreach ($devices as $device) {
+            $this->updateDeviceWeight($device->id, $validated['bulkDeviceWeight']);
+        }
+
+        $this->loadDeviceWeights();
+        session()->flash('status', 'Hromadné počty hlasov boli priradené '.count($devices).' zariadeniam.');
+    }
+
+    public function importDeviceWeights(): void
+    {
+        $validated = $this->validate([
+            'deviceWeightsImport' => ['required', 'file', 'max:1024'],
+        ]);
+
+        $handle = fopen($validated['deviceWeightsImport']->getRealPath(), 'r');
+
+        if ($handle === false) {
+            $this->addError('deviceWeightsImport', 'Súbor sa nepodarilo otvoriť.');
+
+            return;
+        }
+
+        $imported = 0;
+
+        while (($row = fgetcsv($handle)) !== false) {
+            $deviceNumber = trim((string) ($row[0] ?? ''));
+            $weight = trim((string) ($row[1] ?? ''));
+
+            if ($deviceNumber === 'device_number' && $weight === 'weight') {
+                continue;
+            }
+
+            if ($deviceNumber === '' || $weight === '' || ! is_numeric($weight)) {
+                continue;
+            }
+
+            $device = Device::query()
+                ->where('device_number', $deviceNumber)
+                ->first();
+
+            if (! $device) {
+                continue;
+            }
+
+            $this->updateDeviceWeight($device->id, $weight);
+            $imported++;
+        }
+
+        fclose($handle);
+
+        $this->deviceWeightsImport = null;
+        $this->loadDeviceWeights();
+
+        session()->flash('status', 'Importované počty hlasov pre '.$imported.' zariadení.');
+    }
+
+    public function exportDeviceWeights(): StreamedResponse
+    {
+        $this->loadDeviceWeights();
+
+        return response()->streamDownload(function (): void {
+            $output = fopen('php://output', 'w');
+
+            if ($output === false) {
+                return;
+            }
+
+            fputcsv($output, ['device_number', 'weight']);
+
+            foreach ($this->deviceWeightRows as $row) {
+                fputcsv($output, [$row['device_number'], $row['weight']]);
+            }
+
+            fclose($output);
+        }, Str::slug($this->voting->name).'-vahy-zariadeni.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     public function render(): View
@@ -262,5 +369,32 @@ class VotingEditor extends Component
         return $this->voting->questions()
             ->whereKey($questionId)
             ->firstOrFail();
+    }
+
+    private function updateDeviceWeight(int $deviceId, string|int|float $weight): void
+    {
+        VotingAttendee::query()->updateOrCreate(
+            [
+                'voting_id' => $this->voting->id,
+                'device_id' => $deviceId,
+            ],
+            [
+                'weight' => $weight,
+                'is_present' => true,
+                'can_vote' => true,
+                'registered_at' => now(),
+            ],
+        );
+    }
+
+    private function deviceNumberIsInRange(string $deviceNumber, int $maxDeviceNumber): bool
+    {
+        if (! ctype_digit($deviceNumber)) {
+            return false;
+        }
+
+        $number = (int) ltrim($deviceNumber, '0');
+
+        return $number >= 1 && $number <= $maxDeviceNumber;
     }
 }

@@ -209,6 +209,31 @@ test('when automatic results are disabled console advances immediately after fin
     expect($component->currentQuestionId)->toBe($secondQuestion->id);
 });
 
+test('previous question moves to the nearest earlier question', function () {
+    [, $voting, $firstQuestion] = createConsoleFixture();
+
+    $secondQuestion = $voting->createQuestionWithDefaults(
+        order: 2,
+        label: 'Hlasovanie 2',
+        text: 'Druhá otázka',
+        responseTimeSeconds: 20,
+    );
+
+    $thirdQuestion = $voting->createQuestionWithDefaults(
+        order: 3,
+        label: 'Hlasovanie 3',
+        text: 'Tretia otázka',
+        responseTimeSeconds: 15,
+    );
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting, $thirdQuestion);
+    $component->goToPreviousQuestion();
+
+    expect($component->currentQuestionId)->toBe($secondQuestion->id);
+    expect($component->currentQuestionId)->not->toBe($firstQuestion->id);
+});
+
 /**
  * @return array{0: User, 1: Voting, 2: VotingQuestion, 3: Device}
  */

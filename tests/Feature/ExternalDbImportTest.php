@@ -1,14 +1,9 @@
 <?php
 
 use App\Models\Device;
-use App\Models\User;
 use Illuminate\Http\UploadedFile;
 
 test('external sqlite import stores nullable codes as empty strings', function () {
-    $user = User::factory()->create([
-        'email_verified_at' => now(),
-    ]);
-
     $databasePath = tempnam(sys_get_temp_dir(), 'external-db-');
 
     try {
@@ -43,10 +38,9 @@ test('external sqlite import stores nullable codes as empty strings', function (
             true
         );
 
-        $this->actingAs($user)
-            ->post(route('load.external.db'), [
-                'db_file' => $upload,
-            ])
+        $this->post(route('load.external.db'), [
+            'db_file' => $upload,
+        ])
             ->assertRedirect();
 
         expect(Device::query()->first())

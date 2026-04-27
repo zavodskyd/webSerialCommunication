@@ -151,9 +151,45 @@
                     <h2 class="text-2xl font-semibold text-slate-900">Počet hlasov zariadení</h2>
                     <p class="mt-1 text-sm text-slate-500">Váha 0 znamená, že zariadenie sa do výsledku nezapočíta. Ostatné čísla sa pripočítajú k zvolenej odpovedi.</p>
                 </div>
-                <div class="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-white">
-                    {{ count($deviceWeightRows) }} zariadení
+                <div class="flex flex-wrap gap-3">
+                    <button type="button" wire:click="exportDeviceWeights" class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
+                        Export váh
+                    </button>
+                    <div class="rounded-full bg-slate-900 px-4 py-3 text-xs font-semibold uppercase tracking-[0.25em] text-white">
+                        {{ count($deviceWeightRows) }} zariadení
+                    </div>
                 </div>
+            </div>
+
+            <div class="mt-6 grid gap-5 lg:grid-cols-2">
+                <form wire:submit="assignBulkDeviceWeights" class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+                    <h3 class="text-base font-semibold text-slate-900">Hromadné priradenie váh</h3>
+                    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <label class="text-sm font-medium text-slate-700">Váha</label>
+                            <input type="number" min="0" step="0.01" wire:model.blur="bulkDeviceWeight" class="mt-2 w-full rounded-2xl border-slate-300 px-4 py-3 text-slate-900 focus:border-sky-500 focus:ring-sky-300">
+                            @error('bulkDeviceWeight') <p class="mt-2 text-sm text-rose-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-slate-700">Počet zariadení od 1</label>
+                            <input type="number" min="1" wire:model.blur="bulkDeviceCount" class="mt-2 w-full rounded-2xl border-slate-300 px-4 py-3 text-slate-900 focus:border-sky-500 focus:ring-sky-300">
+                            @error('bulkDeviceCount') <p class="mt-2 text-sm text-rose-600">{{ $message }}</p> @enderror
+                        </div>
+                    </div>
+                    <button type="submit" class="mt-4 rounded-2xl bg-sky-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-700">
+                        Priradiť váhu zariadeniam
+                    </button>
+                </form>
+
+                <form wire:submit="importDeviceWeights" class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+                    <h3 class="text-base font-semibold text-slate-900">Import váh zariadení</h3>
+                    <label class="mt-4 block text-sm font-medium text-slate-700">CSV súbor</label>
+                    <input type="file" wire:model="deviceWeightsImport" accept=".csv,text/csv,text/plain" class="mt-2 block w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 file:mr-4 file:rounded-xl file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-slate-700">
+                    @error('deviceWeightsImport') <p class="mt-2 text-sm text-rose-600">{{ $message }}</p> @enderror
+                    <button type="submit" class="mt-4 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700">
+                        Importovať váhy
+                    </button>
+                </form>
             </div>
 
             <form wire:submit="saveDeviceWeights" class="mt-6">
@@ -214,9 +250,7 @@
                         <div class="grid gap-5 xl:grid-cols-[0.8fr,2fr,0.8fr,auto] xl:items-start">
                             <div>
                                 <label class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Poradie</label>
-                                <div class="mt-2 rounded-2xl bg-white px-4 py-3 text-base font-semibold text-slate-900 ring-1 ring-slate-200">
-                                    {{ $question['order'] }}
-                                </div>
+                                <input type="number" min="1" wire:model.blur="questionRows.{{ $index }}.order" class="mt-2 w-full rounded-2xl border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-900 focus:border-sky-500 focus:ring-sky-300">
                             </div>
 
                             <div class="space-y-4">

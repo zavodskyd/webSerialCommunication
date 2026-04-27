@@ -1,13 +1,8 @@
 <?php
 
 use App\Models\Device;
-use App\Models\User;
 
-test('verified user can view imported devices index', function () {
-    $user = User::factory()->create([
-        'email_verified_at' => now(),
-    ]);
-
+test('visitor can view imported devices index', function () {
     Device::query()->create([
         'device_number' => '001',
         'code_a' => '2081a1',
@@ -30,17 +25,11 @@ test('verified user can view imported devices index', function () {
         'code_ruka' => '',
     ]);
 
-    $this->actingAs($user)
-        ->get(route('devices.index'))
+    $this->get(route('devices.index'))
         ->assertOk()
         ->assertSeeText('Importované zariadenia')
         ->assertSeeText('001')
         ->assertSeeText('326')
         ->assertSeeText('Nekompletné')
         ->assertSeeText('Kompletné');
-});
-
-test('guest cannot view imported devices index', function () {
-    $this->get(route('devices.index'))
-        ->assertRedirect('/login');
 });

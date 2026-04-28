@@ -429,10 +429,37 @@ class VotingConsole extends Component
             ->first();
 
         if (! $nextQuestion) {
+            $this->markVotingFinished();
+
             return;
         }
 
         $this->selectQuestion($nextQuestion->id);
+    }
+
+    private function markVotingFinished(): void
+    {
+        if ($this->voting->finished_at !== null) {
+            return;
+        }
+
+        // Don't touch voting.status — finishQuestion already set it to 'draft'
+        // and the codebase only ever uses 'draft' / 'live'. Adding a third value
+        // would be a behaviour change beyond the scope of this fix; finished_at
+        // is the unambiguous signal.
+        $this->voting->forceFill([
+            'finished_at' => now(),
+            'runtime_remaining_seconds' => 0,
+            'runtime_timer_running' => false,
+            'runtime_collector_enabled' => false,
+            'runtime_results_visible' => false,
+        ])->save();
+
+        $this->remainingSeconds = 0;
+        $this->timerRunning = false;
+        $this->collectorEnabled = false;
+        $this->resultsVisible = false;
+        $this->dispatchConsoleState();
     }
 
     private function resetQuestionState(): void

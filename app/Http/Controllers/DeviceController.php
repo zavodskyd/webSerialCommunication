@@ -32,95 +32,25 @@ class DeviceController extends Controller
         $file = $request->file('csv_file');
         $csvData = array_map('str_getcsv', file($file->getPathname()));
 
-        array_shift($csvData);
+        // Odstránenie hlavičky
+        $headers = array_shift($csvData);
 
-        $rowErrors = [];
-        $normalizedRows = [];
-
-        foreach ($csvData as $index => $row) {
-            $lineNumber = $index + 2;
-
-            if (count(array_filter($row ?? [], fn ($value): bool => trim((string) $value) !== '')) === 0) {
-                continue;
-            }
-
-            if (count($row) < 8) {
-                $rowErrors[] = "Riadok {$lineNumber}: očakávaných 8 stĺpcov, nájdených ".count($row).'.';
-
-                continue;
-            }
-
-            $deviceNumber = trim((string) $row[0]);
-
-            if ($deviceNumber === '') {
-                $rowErrors[] = "Riadok {$lineNumber}: device_number je prázdny.";
-
-                continue;
-            }
-
-            $codes = [];
-
-            foreach (['code_a', 'code_b', 'code_c', 'code_d', 'code_e', 'code_f', 'code_ruka'] as $offset => $column) {
-                $codes[$column] = $this->normalizeHexCode((string) $row[$offset + 1]);
-            }
-
-            $invalidCodeColumns = array_keys(array_filter(
-                $codes,
-                fn (?string $code): bool => $code === null,
-            ));
-
-            if ($invalidCodeColumns !== []) {
-                $rowErrors[] = "Riadok {$lineNumber}: neplatný hex kód v stĺpcoch ".implode(', ', $invalidCodeColumns).'.';
-
-                continue;
-            }
-
-            $normalizedRows[] = ['device_number' => $deviceNumber] + $codes;
+        foreach ($csvData as $row) {
+            Device::updateOrCreate(
+                ['device_number' => $row[0]],
+                [
+                    'code_a' => $row[1],
+                    'code_b' => $row[2],
+                    'code_c' => $row[3],
+                    'code_d' => $row[4],
+                    'code_e' => $row[5],
+                    'code_f' => $row[6],
+                    'code_ruka' => $row[7],
+                ]
+            );
         }
 
-        if ($rowErrors !== []) {
-            return response()->json([
-                'message' => 'Import bol odmietnutý kvôli chybám v dátach.',
-                'errors' => ['rows' => $rowErrors],
-            ], 422);
-        }
-
-        DB::transaction(function () use ($normalizedRows): void {
-            foreach ($normalizedRows as $row) {
-                Device::updateOrCreate(
-                    ['device_number' => $row['device_number']],
-                    [
-                        'code_a' => $row['code_a'],
-                        'code_b' => $row['code_b'],
-                        'code_c' => $row['code_c'],
-                        'code_d' => $row['code_d'],
-                        'code_e' => $row['code_e'],
-                        'code_f' => $row['code_f'],
-                        'code_ruka' => $row['code_ruka'],
-                    ],
-                );
-            }
-        });
-
-        return response()->json([
-            'message' => 'Import successful',
-            'imported' => count($normalizedRows),
-        ], 200);
-    }
-
-    private function normalizeHexCode(string $value): ?string
-    {
-        $trimmed = trim($value);
-
-        if ($trimmed === '') {
-            return '';
-        }
-
-        if (preg_match('/^[0-9a-fA-F]+$/', $trimmed) !== 1) {
-            return null;
-        }
-
-        return strtolower($trimmed);
+        return response()->json(['message' => 'Import successful'], 200);
     }
 
     public function loadExternalDb(Request $request): RedirectResponse
@@ -142,12 +72,12 @@ class DeviceController extends Controller
                 'database' => storage_path('app/private/'.$path),
             ]]);
 
-            $tableExists = DB::connection('external')
+            $hasSourceTable = DB::connection('external')
                 ->selectOne(
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'SKDP_ParentZariadenie' LIMIT 1",
-                );
+                ) !== null;
 
-            if ($tableExists === null) {
+            if (! $hasSourceTable) {
                 return redirect()->back()->withErrors([
                     'db_file' => 'Externá databáza neobsahuje tabuľku SKDP_ParentZariadenie.',
                 ]);

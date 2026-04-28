@@ -253,6 +253,7 @@
         flowControl: 'none',
         serialPort: null,
         reader: null,
+        readerStopPromise: null,
         writer: null,
         isConnected: false,
         isReading: false,
@@ -325,7 +326,7 @@
         setDisabled('[data-usb-connect]', state.isConnected);
         setDisabled(
             '[data-usb-disconnect]',
-            !state.isConnected || state.collectorEnabled || state.preparingQuestionStart || state.isReading,
+            !state.isConnected || state.collectorEnabled || state.preparingQuestionStart,
         );
         setDisabled('[data-start-question]', !state.isConnected || state.timerRunning || state.preparingQuestionStart);
         setDisabled('[data-pause-question]', !state.isConnected || !state.timerRunning);
@@ -527,6 +528,14 @@
         }
     };
 
+    const waitForReaderStop = async () => {
+        if (!state.readerStopPromise) {
+            return;
+        }
+
+        await state.readerStopPromise;
+    };
+
     const startQuestionFromFrontend = async () => {
         if (!state.isConnected || state.timerRunning || state.preparingQuestionStart) {
             return;
@@ -569,6 +578,7 @@
         }
 
         await waitForCommunicationStop();
+        await waitForReaderStop();
 
         if (state.isReading || state.stoppingCommunication) {
             return;
@@ -579,7 +589,7 @@
 
         try {
             state.isReading = true;
-            readData();
+            state.readerStopPromise = readData();
             await delay(50);
             await sendHexCommand('5b80db', 3);
             await sendHexCommand('5a80da', 3);
@@ -591,6 +601,9 @@
 
     const stopCommunication = async () => {
         if (state.stoppingCommunication) {
+            await waitForCommunicationStop();
+            await waitForReaderStop();
+
             return;
         }
 
@@ -601,17 +614,19 @@
             await sendHexCommand('5b80db', 3);
 
             if (state.reader) {
+                const reader = state.reader;
+
                 try {
                     await Promise.race([
-                        state.reader.cancel(),
+                        reader.cancel(),
                         new Promise((resolve) => setTimeout(resolve, 1000)),
                     ]);
                 } catch (error) {
                     console.log('Reader already cancelled or released');
                 }
-
-                state.reader = null;
             }
+
+            await waitForReaderStop();
         } finally {
             state.stoppingCommunication = false;
             renderConsoleState();
@@ -621,11 +636,12 @@
     const readData = async () => {
         try {
             while (state.isReading) {
-                state.reader = state.serialPort.readable.getReader();
+                const reader = state.serialPort.readable.getReader();
+                state.reader = reader;
 
                 try {
                     while (state.isReading) {
-                        const { value, done } = await state.reader.read();
+                        const { value, done } = await reader.read();
 
                         if (done) {
                             state.isReading = false;
@@ -636,13 +652,19 @@
                         await processIncomingMessages();
                     }
                 } finally {
-                    state.reader.releaseLock();
-                    state.reader = null;
+                    reader.releaseLock();
+
+                    if (state.reader === reader) {
+                        state.reader = null;
+                    }
                 }
             }
         } catch (error) {
             console.error('Error reading data:', error);
         } finally {
+            state.isReading = false;
+            state.reader = null;
+            state.readerStopPromise = null;
             renderConsoleState();
         }
     };
@@ -762,14 +784,14 @@
             return;
         }
 
-        if (state.collectorEnabled || state.preparingQuestionStart || state.isReading) {
+        if (state.collectorEnabled || state.preparingQuestionStart) {
             return;
         }
 
         state.disconnecting = true;
         stopTimer();
 
-        if (state.isReading) {
+        if (state.isReading || state.reader || state.readerStopPromise || state.stoppingCommunication) {
             await stopCommunication();
         }
 
@@ -822,7 +844,7 @@
         }
 
         if (event.target.closest('[data-usb-disconnect]')) {
-            if (state.collectorEnabled || state.preparingQuestionStart || state.isReading) {
+            if (state.collectorEnabled || state.preparingQuestionStart) {
                 return;
             }
 

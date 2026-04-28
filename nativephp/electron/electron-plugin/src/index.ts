@@ -1,6 +1,6 @@
 import CrossProcessExports from "electron";
 import { app, session, powerMonitor } from "electron";
-import { ChildProcessWithoutNullStreams } from "child_process";
+import { ChildProcessWithoutNullStreams, execFileSync } from "child_process";
 import { initialize } from "@electron/remote/main/index.js";
 import state from "./server/state.js";
 import { electronApp, optimizer } from "@electron-toolkit/utils";
@@ -21,6 +21,17 @@ import killSync from "kill-sync";
 // Workaround for CommonJS module
 import electronUpdater from 'electron-updater';
 const { autoUpdater } = electronUpdater;
+
+function killProcessTree(pid: number) {
+  if (process.platform === "win32") {
+    execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+
+    return;
+  }
+
+  // @ts-ignore
+  killSync(pid, 'SIGTERM', true); // Kill tree
+}
 
 class NativePHP {
   processes: ChildProcessWithoutNullStreams[] = [];
@@ -289,14 +300,16 @@ class NativePHP {
 
     this.processes
       .filter((p) => p !== undefined)
-      .forEach((process) => {
-        if (!process || !process.pid) return;
-        if (process.killed && process.exitCode !== null) return;
+      .forEach((childProcess) => {
+        if (!childProcess || !childProcess.pid) return;
+        if (childProcess.killed && childProcess.exitCode !== null) return;
 
         try {
-          // @ts-ignore
-          killSync(process.pid, 'SIGTERM', true); // Kill tree
-          ps.kill(process.pid); // Sometimes does not kill the subprocess of php server
+          killProcessTree(childProcess.pid);
+
+          if (process.platform !== "win32") {
+            ps.kill(childProcess.pid); // Sometimes does not kill the subprocess of php server
+          }
 
         } catch (err) {
           console.error(err);

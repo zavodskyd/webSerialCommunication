@@ -1,5 +1,6 @@
 import express from 'express';
 import {utilityProcess, UtilityProcess} from 'electron';
+import {execFileSync} from 'child_process';
 import state from '../state.js';
 import {notifyLaravel} from "../utils.js";
 import {getAppPath, getDefaultEnvironmentVariables, getDefaultPhpIniSettings, runningSecureBuild} from "../php.js";
@@ -8,6 +9,17 @@ import {fileURLToPath} from "url";
 import {join} from "path";
 
 const router = express.Router();
+
+function killProcessTree(pid: number) {
+    if (process.platform === 'win32') {
+        execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], {stdio: 'ignore'});
+
+        return;
+    }
+
+    // @ts-ignore
+    killSync(pid, 'SIGTERM', true); // Kill tree
+}
 
 function startProcess(settings, useNodeRuntime = false) {
     const {alias, cmd, cwd, env, persistent, spawnTimeout = 30000} = settings;
@@ -195,9 +207,11 @@ function stopProcess(alias) {
 
     console.log('Process [' + alias + '] stopping with PID [' + proc.pid + '].');
 
-    // @ts-ignore
-    killSync(proc.pid, 'SIGTERM', true); // Kill tree
-    proc.kill(); // Does not work but just in case. (do not put before killSync)
+    killProcessTree(proc.pid);
+
+    if (process.platform !== 'win32') {
+        proc.kill(); // Does not work but just in case. (do not put before killSync)
+    }
 }
 
 export function stopAllProcesses() {

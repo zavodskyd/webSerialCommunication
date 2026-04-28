@@ -1,4 +1,4 @@
-import {app, BrowserWindow, dialog, session} from 'electron'
+import {app, BrowserWindow, ipcMain, session} from 'electron'
 import NativePHP from '#plugin'
 import {existsSync, readdirSync, readFileSync, statSync, writeFileSync} from 'fs'
 import path from 'path'
@@ -93,6 +93,143 @@ const isLocalNativePhpOrigin = (origin) => {
     }
 };
 
+const escapeHtml = (value) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+const showSerialPortPicker = (parentWindow, ports, preferredPortIndex) => new Promise((resolve) => {
+    const channel = `nativephp-select-serial-port-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const pickerWindow = new BrowserWindow({
+        width: 560,
+        height: Math.min(180 + (ports.length * 72), 680),
+        parent: parentWindow ?? undefined,
+        modal: Boolean(parentWindow),
+        show: false,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        fullscreenable: false,
+        title: 'Vyber USB zariadenie',
+        backgroundColor: '#f8fafc',
+        webPreferences: {
+            contextIsolation: false,
+            nodeIntegration: true,
+        },
+    });
+    let selectionHandled = false;
+    const finishSelection = (selectedIndex) => {
+        if (selectionHandled) {
+            return;
+        }
+
+        selectionHandled = true;
+        ipcMain.removeAllListeners(channel);
+
+        if (!pickerWindow.isDestroyed()) {
+            pickerWindow.close();
+        }
+
+        resolve(selectedIndex);
+    };
+    const portButtons = ports.map((port, index) => `
+        <button class="port ${index === preferredPortIndex ? 'preferred' : ''}" data-port-index="${index}"${index === preferredPortIndex ? ' autofocus' : ''}>
+            <span>${escapeHtml(port.label)}</span>
+            ${index === preferredPortIndex ? '<strong>Odporúčané</strong>' : ''}
+        </button>
+    `).join('');
+    const html = `<!doctype html>
+<html lang="sk">
+<head>
+    <meta charset="utf-8">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: #f8fafc;
+            color: #0f172a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        main { padding: 22px; }
+        h1 { margin: 0 0 8px; font-size: 18px; line-height: 1.25; }
+        p { margin: 0 0 16px; color: #475569; font-size: 13px; line-height: 1.45; }
+        .ports { display: flex; flex-direction: column; gap: 8px; }
+        .port, .cancel {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #0f172a;
+            cursor: pointer;
+            font: inherit;
+            padding: 11px 12px;
+            text-align: left;
+        }
+        .port {
+            align-items: center;
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+            min-height: 48px;
+        }
+        .port:hover, .port:focus { border-color: #2563eb; outline: none; }
+        .port span { overflow-wrap: anywhere; }
+        .port strong {
+            border-radius: 999px;
+            background: #dbeafe;
+            color: #1d4ed8;
+            flex: 0 0 auto;
+            font-size: 11px;
+            padding: 3px 8px;
+        }
+        .cancel {
+            margin-top: 14px;
+            text-align: center;
+        }
+        .cancel:hover, .cancel:focus { border-color: #64748b; outline: none; }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Vyber USB zariadenie</h1>
+        <p>Vyber serial/USB zariadenie pre hlasovanie. Ak zariadenie nemá očakávaný názov, použi port, VID/PID alebo popis.</p>
+        <section class="ports">${portButtons}</section>
+        <button class="cancel" data-cancel>Zrušiť</button>
+    </main>
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        document.addEventListener('click', (event) => {
+            const portButton = event.target.closest('[data-port-index]');
+
+            if (portButton) {
+                ipcRenderer.send('${channel}', Number(portButton.dataset.portIndex));
+            }
+
+            if (event.target.closest('[data-cancel]')) {
+                ipcRenderer.send('${channel}', -1);
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                ipcRenderer.send('${channel}', -1);
+            }
+        });
+    </script>
+</body>
+</html>`;
+
+    ipcMain.once(channel, (_event, selectedIndex) => finishSelection(selectedIndex));
+    pickerWindow.on('closed', () => finishSelection(-1));
+    pickerWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    pickerWindow.once('ready-to-show', () => {
+        pickerWindow.show();
+    });
+});
+
 const configureWebSerial = () => {
     console.log('[NativePHP] Configuring Web Serial handlers');
 
@@ -173,7 +310,7 @@ const configureWebSerial = () => {
         details.deviceType === 'serial' && isLocalNativePhpOrigin(details.origin)
     ));
 
-    session.defaultSession.on('select-serial-port', (event, portList, webContents, callback) => {
+    session.defaultSession.on('select-serial-port', async (event, portList, webContents, callback) => {
         event.preventDefault();
 
         console.log('[NativePHP] Serial ports:', portList.map((port) => ({
@@ -194,26 +331,19 @@ const configureWebSerial = () => {
         const sortedPorts = [...portList].sort((left, right) => (
             Number(isVotingUsbAdapter(right)) - Number(isVotingUsbAdapter(left))
         ));
-        const buttons = sortedPorts.map(formatSerialPortLabel);
+        const pickerPorts = sortedPorts.map((port) => ({
+            label: formatSerialPortLabel(port),
+        }));
         const preferredPortIndex = sortedPorts.findIndex(isVotingUsbAdapter);
-        const cancelId = buttons.length;
-        const selectionDialogOptions = {
-            type: 'question',
-            title: 'Vyber USB zariadenie',
-            message: 'Vyber serial/USB zariadenie pre hlasovanie',
-            detail: 'Ak zariadenie nemá očakávaný názov, vyber ho podľa portu, VID/PID alebo popisu.',
-            buttons: [...buttons, 'Zrušiť'],
-            defaultId: preferredPortIndex >= 0 ? preferredPortIndex : 0,
-            cancelId,
-            noLink: true,
-        };
         const parentWindow = BrowserWindow.fromWebContents(webContents);
-        const selectedButtonIndex = parentWindow
-            ? dialog.showMessageBoxSync(parentWindow, selectionDialogOptions)
-            : dialog.showMessageBoxSync(selectionDialogOptions);
-        const selectedPort = selectedButtonIndex === cancelId
+        const selectedPortIndex = await showSerialPortPicker(
+            parentWindow,
+            pickerPorts,
+            preferredPortIndex >= 0 ? preferredPortIndex : 0,
+        );
+        const selectedPort = selectedPortIndex < 0
             ? null
-            : sortedPorts[selectedButtonIndex];
+            : sortedPorts[selectedPortIndex];
 
         console.log('[NativePHP] Selected serial port:', selectedPort?.portName ?? selectedPort?.portId ?? 'none');
 
@@ -222,6 +352,14 @@ const configureWebSerial = () => {
 };
 
 app.whenReady().then(configureWebSerial);
+
+app.on('window-all-closed', () => {
+    app.quit();
+});
+
+app.once('quit', () => {
+    process.exit(0);
+});
 
 /**
  * Turn on the lights for the NativePHP app.

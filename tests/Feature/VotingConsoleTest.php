@@ -98,11 +98,17 @@ test('native serial runtime separates connection from transceiver collection', f
         ->toContain("await sendHexCommand('5a80da', 3);")
         ->toContain('const finishQuestionFromFrontend = async (remainingSeconds = state.remainingSeconds) => {')
         ->toContain('await stopCommunication();')
-        ->toContain('!state.isConnected || state.collectorEnabled || state.preparingQuestionStart || state.isReading')
-        ->toContain('if (state.collectorEnabled || state.preparingQuestionStart || state.isReading) {')
+        ->toContain('readerStopPromise: null')
+        ->toContain('state.readerStopPromise = readData();')
+        ->toContain('await waitForReaderStop();')
+        ->toContain('!state.isConnected || state.collectorEnabled || state.preparingQuestionStart')
+        ->toContain('if (state.collectorEnabled || state.preparingQuestionStart) {')
+        ->toContain('if (state.isReading || state.reader || state.readerStopPromise || state.stoppingCommunication) {')
         ->toContain("window.addEventListener('pagehide', disconnectBeforeLeavingConsole);")
         ->toContain("document.addEventListener('livewire:navigating', disconnectBeforeLeavingConsole);")
         ->not->toContain('serialPortFilters')
+        ->not->toContain('!state.isConnected || state.collectorEnabled || state.preparingQuestionStart || state.isReading')
+        ->not->toContain('if (state.collectorEnabled || state.preparingQuestionStart || state.isReading) {')
         ->not->toContain('wire:click="finishQuestion"');
 
     expect(substr_count($consoleView, 'await startCommunication();'))->toBe(2);
@@ -112,13 +118,44 @@ test('native app shows all serial ports for manual usb selection', function () {
     $mainProcess = file_get_contents(base_path('nativephp/electron/src/main/index.js'));
 
     expect($mainProcess)
-        ->toContain("import {app, BrowserWindow, dialog, session} from 'electron'")
+        ->toContain("import {app, BrowserWindow, ipcMain, session} from 'electron'")
         ->toContain("session.defaultSession.on('select-serial-port'")
+        ->toContain('async (event, portList, webContents, callback)')
         ->toContain('formatSerialPortLabel')
-        ->toContain('dialog.showMessageBoxSync')
+        ->toContain('showSerialPortPicker')
+        ->toContain('display: flex; flex-direction: column; gap: 8px;')
+        ->toContain('ipcMain.once(channel')
         ->toContain("'Vyber USB zariadenie'")
         ->toContain('Number(isVotingUsbAdapter(right)) - Number(isVotingUsbAdapter(left))')
+        ->not->toContain('dialog.showMessageBoxSync')
         ->not->toContain('const selectedPort = portList.find(isVotingUsbAdapter);');
+});
+
+test('native app quits when its last window closes', function () {
+    $mainProcess = file_get_contents(base_path('nativephp/electron/src/main/index.js'));
+
+    expect($mainProcess)
+        ->toContain("app.on('window-all-closed', () => {")
+        ->toContain('app.quit();')
+        ->toContain("app.once('quit', () => {")
+        ->toContain('process.exit(0);');
+});
+
+test('native app uses windows taskkill when stopping child process trees', function () {
+    $pluginSource = file_get_contents(base_path('nativephp/electron/electron-plugin/src/index.ts'));
+    $childProcessApiSource = file_get_contents(base_path('nativephp/electron/electron-plugin/src/server/api/childProcess.ts'));
+
+    expect($pluginSource)
+        ->toContain('execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });')
+        ->toContain('process.platform === "win32"')
+        ->toContain('killProcessTree(childProcess.pid)')
+        ->toContain('process.platform !== "win32"');
+
+    expect($childProcessApiSource)
+        ->toContain("execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], {stdio: 'ignore'});")
+        ->toContain("process.platform === 'win32'")
+        ->toContain('killProcessTree(proc.pid)')
+        ->toContain("process.platform !== 'win32'");
 });
 
 test('console persists runtime state for presentation polling', function () {

@@ -552,7 +552,23 @@
 
         try {
             await startCommunication();
-            await applyConsoleState(await componentWire.startQuestion());
+
+            const payload = await componentWire.startQuestion();
+
+            // Force-flip the JS state and drain any votes received during the
+            // round-trip BEFORE handing off to applyConsoleState. Otherwise the
+            // window 'console-state-updated' event fired by PHP and the call's
+            // resolved promise can race in Livewire, leaving pendingVoteCodes
+            // stranded until the next state-sync (which used to be the 5s
+            // syncRemainingSeconds tick — that's why Q2+ "lost" votes for ~5s
+            // and then they all appeared at once).
+            if (payload && payload.collectorEnabled === true) {
+                state.collectorEnabled = true;
+                state.preparingQuestionStart = false;
+                await flushPendingVoteCodes();
+            }
+
+            await applyConsoleState(payload);
         } catch (error) {
             state.preparingQuestionStart = false;
             console.error('Failed to start question:', error);
@@ -723,10 +739,13 @@
             state.incomingBytes.splice(0, state.messageByteLength);
 
             if (!state.collectorEnabled) {
-                if (state.preparingQuestionStart) {
-                    state.pendingVoteCodes.push(hexData);
-                }
-
+                // Always queue while the collector is off so a state transition
+                // can never drop a press. The queue is cleared explicitly by
+                // applyConsoleState when we settle into a !collectorEnabled +
+                // !preparingQuestionStart state, and flushed when the collector
+                // is re-enabled. This is safer than gating on preparingQuestionStart
+                // because that flag has tricky timing around Livewire round-trips.
+                state.pendingVoteCodes.push(hexData);
                 renderPendingVoteCode(hexData);
 
                 continue;

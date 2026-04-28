@@ -85,15 +85,10 @@ vendor/bin/pint --dirty --format agent
 - The serial protocol is duplicated between `serial-communication.blade.php` and `voting-console.blade.php`. If you change init bytes or parsing, update both.
 - Tests prefer feature tests + factories over unit tests — see `tests/Feature/VotingConsoleTest.php` for the canonical pattern (Livewire `Livewire::test(Component::class, [...])`).
 
-## Design intent — things this codebase does on purpose
+## Project docs to read before changing behaviour
 
-These look like bugs at first glance. They aren't. Don't "fix" them without an explicit ask.
-
-- **Permissive imports.** `DeviceController::import` (CSV) and `loadExternalDb` (external SQLite) accept rows with empty or non-hex code values. A device row with `code_a = ""` or `code_a = "n/a"` is a legitimate "this button is unmapped on this device", not malformed input. The intent is for the import to never fail on missing data — get whatever the operator has into the table and let them clean it up later. **Don't add per-row hex validation, column-format checks, or "reject the whole import on bad row" logic without confirming the change.** The original lenient behaviour is the feature.
-- **Serial init runs once per connection, not per question.** Operator clicks "Pripojiť" → full hex handshake (`f400…`, `f500…`, `f54b…`) runs in `connect()`. The transmitter stays initialised until "Odpojiť" or page-leave. Between questions, only the enable/disable commands (`5a80da` / `5b80db`) toggle the collector. **Don't re-call `initializeDevice()` from `startCommunication`** — it contradicts the init-once design.
-- **Vote rejection is silent in `recordVoteFromCode`.** A code that doesn't match any device, a device with `weight=0`, or a code that isn't a voting button (e.g. `Ruka`) all return `accepted=false` without throwing. The operator-room UX is "press a button, see what happened in the panel" — surfacing every rejection as an error toast would be noisy.
-- **`devices` is a wide flat table on purpose.** Seven nullable string columns (`code_a` … `code_f`, `code_ruka`) per device. Lookup walks all 7 columns; that's fine for ~100-device fleets. Don't propose normalizing into `device_codes (device_id, button, hex_code)` without a concrete reason (new button layout, variable-button Qomo models, …).
-- **`Vote` rows are `updateOrCreate(['question_id', 'device_id'])`.** Re-pressing a button on the same question overwrites the previous vote — the latest press wins. The DB has a `unique(voting_question_id, device_id)` to enforce this. Don't add deduplication logic in PHP; the constraint already does it.
+- `docs/technical-overview.md` — architektúra, routy, dátový model, sériový protokol.
+- `docs/design-intent.md` — **read this before "fixing" anything that looks weird.** Lists deliberate design choices (lenient imports, init-once-per-connection, silent vote rejection, stale-vote acceptance, wide `devices` table, `updateOrCreate` vote dedup). Don't propose tightening these without an explicit ask.
 
 <laravel-boost-guidelines>
 === foundation rules ===

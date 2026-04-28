@@ -603,11 +603,9 @@
             await delay(150);
             state.incomingBytes = [];
 
-            // Reset the transmitter to a known state on every question start, not just
-            // on the initial connect — otherwise consecutive stop/start cycles can leave
-            // the device in a half-state and the first frame after start is lost.
-            await initializeDevice();
-
+            // Init runs once at connect(), not per question — the device stays
+            // initialised for the whole session and only the enable/disable
+            // commands (5a80da / 5b80db) toggle the collector between questions.
             await sendHexCommand('5b80db', 3);
             await sendHexCommand('5a80da', 3);
         } finally {

@@ -1,6 +1,6 @@
 import {app, BrowserWindow, ipcMain, session, utilityProcess} from 'electron'
 import NativePHP from '#plugin'
-import {existsSync, readdirSync, readFileSync, statSync, writeFileSync} from 'fs'
+import {appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync} from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 
@@ -361,57 +361,96 @@ const configureWebSerial = () => {
 // native binary lives. Doing this from PHP cannot work in the packaged
 // .exe, regardless of how clever the PHP-side path resolution is.
 const spawnSerialHelper = () => {
-    const helperScript = path.join(app.getAppPath(), 'serial-helper.js');
-
-    if (!existsSync(helperScript)) {
-        console.error('[serial-helper] script not found at', helperScript);
-
-        return;
-    }
-
     // appPath here is `${buildPath}/app` (line 16) — the Laravel app root,
     // i.e. what PHP base_path() returns. Helper writes its token+port files
     // into LARAVEL_BASE/storage/framework so Laravel can read them.
     const laravelBase = appPath;
+    const debugLogPath = path.join(laravelBase, 'storage', 'logs', 'serial-helper-spawn.log');
 
-    // The bearer token — generate once, write to disk so Laravel and the
-    // helper share the same value. Using a deterministic per-install token
-    // would be simpler but writing on first boot keeps SerialHelperTokens
-    // PHP behaviour intact.
+    const debugLog = (msg, extra) => {
+        const line = `${new Date().toISOString()} ${msg}` + (extra !== undefined ? ' ' + JSON.stringify(extra) : '') + '\n';
+        try {
+            mkdirSync(path.dirname(debugLogPath), {recursive: true});
+            appendFileSync(debugLogPath, line);
+        } catch {
+            // ignore — fallback to console
+        }
+        console.log('[serial-helper]', msg, extra ?? '');
+    };
+
+    debugLog('spawnSerialHelper invoked', {
+        appPath: app.getAppPath(),
+        laravelBase,
+        execPath: process.execPath,
+        resourcesPath: process.resourcesPath,
+        platform: process.platform,
+        arch: process.arch,
+    });
+
+    const helperScript = path.join(app.getAppPath(), 'serial-helper.js');
+
+    if (!existsSync(helperScript)) {
+        debugLog('helper script not found at', {helperScript});
+        // Try alternative: outside app.asar (asarUnpack location).
+        const unpackedScript = helperScript.replace('app.asar', 'app.asar.unpacked');
+        if (existsSync(unpackedScript)) {
+            debugLog('found in app.asar.unpacked instead', {unpackedScript});
+        } else {
+            debugLog('also not found in unpacked location', {unpackedScript});
+            return;
+        }
+    } else {
+        debugLog('helper script exists', {helperScript});
+    }
+
     const tokenPath = path.join(laravelBase, 'storage', 'framework', 'serial-helper.token');
     let token;
 
     if (existsSync(tokenPath)) {
         token = readFileSync(tokenPath, 'utf8').trim();
+        debugLog('reusing existing token file');
     } else {
         token = crypto.randomBytes(32).toString('hex');
         try {
+            mkdirSync(path.dirname(tokenPath), {recursive: true});
             writeFileSync(tokenPath, token);
+            debugLog('wrote new token file');
         } catch (e) {
-            console.error('[serial-helper] failed to write token file', e.message);
+            debugLog('failed to write token file', {error: e.message});
         }
     }
 
-    console.log('[serial-helper] forking', helperScript, 'with LARAVEL_BASE=', laravelBase);
-
-    const proc = utilityProcess.fork(helperScript, [], {
-        stdio: 'pipe',
-        env: {
-            ...process.env,
-            LARAVEL_BASE: laravelBase,
-            LARAVEL_URL: 'http://127.0.0.1:8101',
-            SERIAL_HELPER_TOKEN: token,
-        },
-    });
+    let proc;
+    try {
+        proc = utilityProcess.fork(helperScript, [], {
+            stdio: 'pipe',
+            env: {
+                ...process.env,
+                LARAVEL_BASE: laravelBase,
+                LARAVEL_URL: 'http://127.0.0.1:8101',
+                SERIAL_HELPER_TOKEN: token,
+            },
+        });
+        debugLog('utilityProcess.fork returned', {pid: proc.pid ?? null});
+    } catch (e) {
+        debugLog('utilityProcess.fork threw', {error: e.message, stack: e.stack});
+        return;
+    }
 
     proc.stdout?.on('data', (chunk) => {
-        process.stdout.write('[serial-helper] ' + chunk.toString());
+        debugLog('helper stdout', {data: chunk.toString().trim()});
     });
     proc.stderr?.on('data', (chunk) => {
-        process.stderr.write('[serial-helper] ' + chunk.toString());
+        debugLog('helper stderr', {data: chunk.toString().trim()});
+    });
+    proc.on('spawn', () => {
+        debugLog('helper spawn event', {pid: proc.pid});
     });
     proc.on('exit', (code) => {
-        console.error('[serial-helper] exited with code', code);
+        debugLog('helper exited', {code});
+    });
+    proc.on('error', (err) => {
+        debugLog('helper error', {error: err.message, stack: err.stack});
     });
 
     app.once('before-quit', () => {

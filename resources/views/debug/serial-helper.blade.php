@@ -121,6 +121,16 @@
         </section>
 
         <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <h2 class="text-xl font-semibold text-slate-900">storage/logs/serial-helper-spawn.log (Electron spawn debug)</h2>
+            <p class="mt-1 text-xs font-mono break-all text-slate-500">{{ $spawnLogInfo['path'] }}</p>
+            <p class="mt-1 text-xs text-slate-500">existuje: <strong>{{ $spawnLogInfo['exists'] ? 'áno' : 'nie' }}</strong>, veľkosť: {{ $spawnLogInfo['size'] ?? '—' }} B</p>
+            <p class="mt-1 text-xs text-slate-500">Toto je log z Electron main procesu, ktorý spúšťa helper. Ak helper nebezi, odpoveď je tu.</p>
+            @if ($spawnLogInfo['tail'])
+                <pre class="mt-3 max-h-96 overflow-auto rounded-xl bg-slate-900 p-4 font-mono text-xs text-slate-100">{{ $spawnLogInfo['tail'] }}</pre>
+            @endif
+        </section>
+
+        <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 class="text-xl font-semibold text-slate-900">storage/logs/serial-helper.log (helper vlastné logy)</h2>
             <p class="mt-1 text-xs font-mono break-all text-slate-500">{{ $helperLogInfo['path'] }}</p>
             <p class="mt-1 text-xs text-slate-500">existuje: <strong>{{ $helperLogInfo['exists'] ? 'áno' : 'nie' }}</strong>, veľkosť: {{ $helperLogInfo['size'] ?? '—' }} B</p>

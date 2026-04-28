@@ -35,6 +35,7 @@ class SerialHelperDebugController extends Controller
         $tokenPath = SerialHelperTokens::tokenPath();
         $portPath = SerialHelperTokens::portPath();
         $logPath = storage_path('logs/serial-helper.log');
+        $spawnLogPath = storage_path('logs/serial-helper-spawn.log');
         $queuePath = storage_path('framework/serial-helper-queue.jsonl');
         $laravelLog = storage_path('logs/laravel.log');
 
@@ -63,6 +64,12 @@ class SerialHelperDebugController extends Controller
                 'exists' => is_file($logPath),
                 'size' => is_file($logPath) ? filesize($logPath) : null,
                 'tail' => is_file($logPath) ? self::tail($logPath, 30) : null,
+            ],
+            'spawnLogInfo' => [
+                'path' => $spawnLogPath,
+                'exists' => is_file($spawnLogPath),
+                'size' => is_file($spawnLogPath) ? filesize($spawnLogPath) : null,
+                'tail' => is_file($spawnLogPath) ? self::tail($spawnLogPath, 100) : null,
             ],
             'queueInfo' => [
                 'path' => $queuePath,

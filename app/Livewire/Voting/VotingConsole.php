@@ -3,9 +3,11 @@
 namespace App\Livewire\Voting;
 
 use App\Models\Device;
+use App\Models\VoteEvent;
 use App\Models\Voting;
-use App\Models\VotingAttendee;
 use App\Models\VotingQuestion;
+use App\Services\Voting\VoteRecorder;
+use App\Support\SerialHelperClient;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Livewire\Component;
@@ -34,6 +36,20 @@ class VotingConsole extends Component
 
     public ?string $lastButtonName = null;
 
+    /**
+     * --- node-helper driver state (only meaningful when SERIAL_DRIVER=node-helper) ---
+     */
+    public bool $serialConnected = false;
+
+    public ?string $selectedPortPath = null;
+
+    public ?string $connectedPortPath = null;
+
+    /**
+     * @var array<int, array{path: string, manufacturer: ?string, vendor_id: ?string, product_id: ?string}>
+     */
+    public array $availablePorts = [];
+
     public function mount(Voting $voting, ?VotingQuestion $question = null): void
     {
         $this->voting = $voting;
@@ -53,6 +69,121 @@ class VotingConsole extends Component
         $this->resetQuestionState();
         $this->persistRuntimeState();
         $this->dispatchConsoleState();
+
+        if ($this->isHelperDriver()) {
+            $this->refreshSerialPorts();
+        }
+    }
+
+    public function isHelperDriver(): bool
+    {
+        return config('serial.driver') === 'node-helper';
+    }
+
+    public function refreshSerialPorts(): void
+    {
+        $response = SerialHelperClient::call('list_ports');
+
+        $this->availablePorts = is_array($response['ports'] ?? null) ? $response['ports'] : [];
+    }
+
+    public function connectSerial(): void
+    {
+        if ($this->selectedPortPath === null || $this->selectedPortPath === '') {
+            return;
+        }
+
+        $open = SerialHelperClient::call('open', ['port_path' => $this->selectedPortPath]);
+
+        if (! ($open['ok'] ?? false)) {
+            $this->lastVoteMessage = 'Nepodarilo sa otvoriť port: '.($open['error'] ?? 'unknown');
+
+            return;
+        }
+
+        SerialHelperClient::call('init');
+
+        $this->serialConnected = true;
+        $this->connectedPortPath = $this->selectedPortPath;
+    }
+
+    public function disconnectSerial(): void
+    {
+        if ($this->collectorEnabled) {
+            return;
+        }
+
+        SerialHelperClient::call('close');
+
+        $this->serialConnected = false;
+        $this->connectedPortPath = null;
+    }
+
+    public function startQuestionViaHelper(): void
+    {
+        $payload = $this->startQuestion();
+
+        if (($payload['collectorEnabled'] ?? false) === true) {
+            SerialHelperClient::call('start');
+        }
+    }
+
+    public function pauseQuestionViaHelper(): void
+    {
+        $this->pauseQuestion();
+        SerialHelperClient::call('stop');
+    }
+
+    public function finishQuestionViaHelper(): void
+    {
+        SerialHelperClient::call('stop');
+        $this->finishQuestion();
+    }
+
+    public function liveTick(): void
+    {
+        if ($this->isHelperDriver()) {
+            $this->refreshLastVoteFromEvents();
+        }
+
+        if (! $this->collectorEnabled || ! $this->timerRunning) {
+            return;
+        }
+
+        $question = $this->currentQuestion();
+
+        if ($question->opened_at === null) {
+            return;
+        }
+
+        $elapsed = $question->opened_at->diffInSeconds(now(), false);
+        $this->remainingSeconds = max(0, $question->response_time_seconds - $elapsed);
+
+        if ($this->remainingSeconds <= 0) {
+            if ($this->isHelperDriver()) {
+                SerialHelperClient::call('stop');
+            }
+
+            $this->finishQuestion(0);
+        }
+    }
+
+    private function refreshLastVoteFromEvents(): void
+    {
+        $latest = VoteEvent::query()
+            ->where('voting_question_id', $this->currentQuestionId)
+            ->where('accepted', true)
+            ->latest('received_at')
+            ->with('device')
+            ->first();
+
+        if ($latest === null) {
+            return;
+        }
+
+        $this->lastMatchedDeviceNumber = $latest->device?->device_number;
+        $this->lastButtonName = $latest->button_name;
+        $this->lastVoteMessage = 'Zariadenie '.($latest->device?->device_number ?? '?').' hlasovalo '.$latest->button_name.'.';
     }
 
     /**
@@ -252,99 +383,27 @@ class VotingConsole extends Component
     {
         $question = $this->currentQuestion();
 
-        if (! $this->collectorEnabled && ! $this->isQuestionCollectingVotes($question)) {
-            $this->skipRender();
-
-            return [
-                'accepted' => false,
-                'message' => 'Hlasovanie momentálne neprijíma hlasy.',
-                'lastMatchedDeviceNumber' => $this->lastMatchedDeviceNumber,
-                'lastButtonName' => $this->lastButtonName,
-                'results' => $question->summarizedResults(),
-            ];
-        }
-
-        $device = $this->resolveDeviceByCode($code);
-
-        if (! $device) {
-            $this->lastVoteMessage = 'Kód '.$code.' sa nenašiel.';
-            $this->skipRender();
-
-            return [
-                'accepted' => false,
-                'message' => $this->lastVoteMessage,
-                'lastMatchedDeviceNumber' => $this->lastMatchedDeviceNumber,
-                'lastButtonName' => $this->lastButtonName,
-                'results' => $question->summarizedResults(),
-            ];
-        }
-
-        $buttonName = $device->resolveButtonName($code);
-
-        if (! in_array($buttonName, ['A', 'B', 'C', 'D', 'E', 'F'], true)) {
-            $this->lastVoteMessage = 'Kód '.$code.' nepredstavuje hlasovaciu voľbu.';
-            $this->skipRender();
-
-            return [
-                'accepted' => false,
-                'message' => $this->lastVoteMessage,
-                'lastMatchedDeviceNumber' => $this->lastMatchedDeviceNumber,
-                'lastButtonName' => $this->lastButtonName,
-                'results' => $question->summarizedResults(),
-            ];
-        }
-
-        $attendee = VotingAttendee::query()->firstOrCreate(
-            [
-                'voting_id' => $this->voting->id,
-                'device_id' => $device->id,
-            ],
-            [
-                'weight' => 0,
-                'is_present' => true,
-                'can_vote' => true,
-            ],
+        $result = app(VoteRecorder::class)->record(
+            code: $code,
+            voting: $this->voting,
+            question: $question,
+            collectorEnabledHint: $this->collectorEnabled,
         );
 
-        if ((float) $attendee->weight <= 0) {
-            $this->lastVoteMessage = 'Zariadenie '.$device->device_number.' má nastavený počet hlasov 0.';
-            $this->skipRender();
-
-            return [
-                'accepted' => false,
-                'message' => $this->lastVoteMessage,
-                'lastMatchedDeviceNumber' => $this->lastMatchedDeviceNumber,
-                'lastButtonName' => $this->lastButtonName,
-                'results' => $question->summarizedResults(),
-            ];
+        if ($result->accepted) {
+            $this->lastMatchedDeviceNumber = $result->deviceNumber;
+            $this->lastButtonName = $result->buttonName;
         }
 
-        try {
-            $question->recordVote($attendee, $buttonName);
-        } catch (\InvalidArgumentException $exception) {
-            $this->lastVoteMessage = $exception->getMessage();
-            $this->skipRender();
-
-            return [
-                'accepted' => false,
-                'message' => $this->lastVoteMessage,
-                'lastMatchedDeviceNumber' => $this->lastMatchedDeviceNumber,
-                'lastButtonName' => $this->lastButtonName,
-                'results' => $question->summarizedResults(),
-            ];
-        }
-
-        $this->lastMatchedDeviceNumber = $device->device_number;
-        $this->lastButtonName = $buttonName;
-        $this->lastVoteMessage = 'Zariadenie '.$device->device_number.' hlasovalo '.$buttonName.'.';
+        $this->lastVoteMessage = $result->message;
         $this->skipRender();
 
         return [
-            'accepted' => true,
-            'message' => $this->lastVoteMessage,
+            'accepted' => $result->accepted,
+            'message' => $result->message,
             'lastMatchedDeviceNumber' => $this->lastMatchedDeviceNumber,
             'lastButtonName' => $this->lastButtonName,
-            'results' => $question->summarizedResults(),
+            'results' => $result->results,
         ];
     }
 
@@ -352,7 +411,11 @@ class VotingConsole extends Component
     {
         $question = $this->currentQuestion()->load(['options', 'votes']);
 
-        return view('livewire.voting.voting-console', [
+        $template = $this->isHelperDriver()
+            ? 'livewire.voting.voting-console-helper'
+            : 'livewire.voting.voting-console';
+
+        return view($template, [
             'currentQuestion' => $question,
             'questions' => $this->questions()->get(),
             'results' => $question->summarizedResults(),
@@ -419,15 +482,6 @@ class VotingConsole extends Component
     private function isQuestionActive(): bool
     {
         return $this->collectorEnabled || $this->timerRunning || $this->resultsVisible;
-    }
-
-    private function isQuestionCollectingVotes(VotingQuestion $question): bool
-    {
-        $this->voting->refresh();
-        $question->refresh();
-
-        return $this->voting->runtime_collector_enabled
-            && in_array($question->status, ['live', 'paused'], true);
     }
 
     private function advanceToNextQuestion(): void
@@ -514,12 +568,5 @@ class VotingConsole extends Component
             'remainingSeconds' => $this->remainingSeconds,
             'resultsVisible' => $this->resultsVisible,
         ];
-    }
-
-    private function resolveDeviceByCode(string $code): ?Device
-    {
-        return $this->devices->first(function (Device $device) use ($code): bool {
-            return in_array($code, $device->codeMap(), true);
-        });
     }
 }

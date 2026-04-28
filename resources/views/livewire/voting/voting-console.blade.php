@@ -186,6 +186,10 @@
                 </div>
             </aside>
         </div>
+
+        <p class="mt-6 text-center text-xs font-mono text-slate-400">
+            build {{ \App\Support\BuildVersion::current() }}
+        </p>
     </div>
 
     @if ($resultsVisible)

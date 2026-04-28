@@ -272,12 +272,7 @@ class VotingConsole extends Component
 
         $question = $this->currentQuestion();
 
-        // Helper-driver only: snapshot remaining time at the pause moment
-        // from opened_at, since liveTick is the only clock and we'll need
-        // this to reconstruct opened_at on resume. The legacy web-serial
-        // path drives the timer from JS and pushes truth via syncRemainingSeconds,
-        // so don't overwrite that here.
-        if ($this->isHelperDriver() && $question->opened_at !== null) {
+        if ($question->opened_at !== null) {
             $elapsed = $question->opened_at->diffInSeconds(now(), false);
             $this->remainingSeconds = max(0, $question->response_time_seconds - $elapsed);
         }
@@ -300,21 +295,15 @@ class VotingConsole extends Component
 
         $question = $this->currentQuestion();
 
-        if ($this->isHelperDriver()) {
-            // Shift opened_at so liveTick's "elapsed = response_time_seconds - remainingSeconds"
-            // holds at this instant. Without this, paused wall-clock time gets counted
-            // and the timer skips ahead on resume.
-            $consumed = max(0, $question->response_time_seconds - $this->remainingSeconds);
+        // Shift opened_at so "elapsed = response_time_seconds - remainingSeconds"
+        // holds at this instant. Without this, paused wall-clock time gets counted
+        // and the timer skips ahead on resume.
+        $consumed = max(0, $question->response_time_seconds - $this->remainingSeconds);
 
-            $question->update([
-                'status' => 'live',
-                'opened_at' => now()->subSeconds($consumed),
-            ]);
-        } else {
-            $question->update([
-                'status' => 'live',
-            ]);
-        }
+        $question->update([
+            'status' => 'live',
+            'opened_at' => now()->subSeconds($consumed),
+        ]);
 
         $this->timerRunning = true;
 

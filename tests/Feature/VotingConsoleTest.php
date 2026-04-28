@@ -35,17 +35,24 @@ test('pause keeps collector active and still accepts votes', function () {
 test('start resumes a paused question without resetting the remaining time', function () {
     [, $voting, $question] = createConsoleFixture();
 
+    Carbon::setTestNow(now()->startOfSecond());
+
     $component = app(VotingConsole::class);
     $component->mount($voting);
     $component->startQuestion();
-    $component->syncRemainingSeconds(12);
+
+    Carbon::setTestNow(now()->addSeconds(18));
     $component->pauseQuestion();
+
+    Carbon::setTestNow(now()->addSeconds(60));
     $component->startQuestion();
 
     expect($component->timerRunning)->toBeTrue();
     expect($component->collectorEnabled)->toBeTrue();
     expect($component->remainingSeconds)->toBe(12);
     expect($question->fresh()->status)->toBe('live');
+
+    Carbon::setTestNow();
 });
 
 test('helper driver: liveTick marks helper as unhealthy when not running', function () {
@@ -250,10 +257,13 @@ test('native app uses windows taskkill when stopping child process trees', funct
 test('console persists runtime state for presentation polling', function () {
     [, $voting, $question] = createConsoleFixture();
 
+    Carbon::setTestNow(now()->startOfSecond());
+
     $component = app(VotingConsole::class);
     $component->mount($voting);
     $component->startQuestion();
-    $component->syncRemainingSeconds(18);
+
+    Carbon::setTestNow(now()->addSeconds(12));
     $component->pauseQuestion();
 
     $voting->refresh();
@@ -263,6 +273,8 @@ test('console persists runtime state for presentation polling', function () {
     expect($voting->runtime_timer_running)->toBeFalse();
     expect($voting->runtime_collector_enabled)->toBeTrue();
     expect($voting->runtime_results_visible)->toBeFalse();
+
+    Carbon::setTestNow();
 });
 
 test('device with zero vote weight is ignored in voting results', function () {

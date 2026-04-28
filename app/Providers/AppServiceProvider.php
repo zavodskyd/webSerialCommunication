@@ -2,9 +2,9 @@
 
 namespace App\Providers;
 
-use LogicException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
+use LogicException;
 
 class AppServiceProvider extends ServiceProvider
 {

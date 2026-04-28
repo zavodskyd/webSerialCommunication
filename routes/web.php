@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/votings');
 
+Route::view('test', 'test')
+    ->name('test');
+
 Route::post('/import-devices', [DeviceController::class, 'import'])->name('import.devices');
 Route::get('/import-devices', [DeviceController::class, 'index'])->name('import.devices');
 

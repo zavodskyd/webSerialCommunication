@@ -239,9 +239,6 @@
 
     let componentWire = $wire;
     let consoleRoot = componentWire.$el;
-    const serialPortFilters = [
-        { usbVendorId: 0x10C4, usbProductId: 0xEA60 },
-    ];
     const state = {
         collectorEnabled: initialConsoleState.collectorEnabled,
         timerRunning: initialConsoleState.timerRunning,
@@ -326,7 +323,10 @@
         }
 
         setDisabled('[data-usb-connect]', state.isConnected);
-        setDisabled('[data-usb-disconnect]', !state.isConnected);
+        setDisabled(
+            '[data-usb-disconnect]',
+            !state.isConnected || state.collectorEnabled || state.preparingQuestionStart || state.isReading,
+        );
         setDisabled('[data-start-question]', !state.isConnected || state.timerRunning || state.preparingQuestionStart);
         setDisabled('[data-pause-question]', !state.isConnected || !state.timerRunning);
         setDisabled('[data-finish-question]', !state.isConnected || !state.collectorEnabled);
@@ -494,9 +494,7 @@
 
     const connect = async () => {
         try {
-            state.serialPort = await navigator.serial.requestPort({
-                filters: serialPortFilters,
-            });
+            state.serialPort = await navigator.serial.requestPort();
 
             await state.serialPort.open({
                 baudRate: state.baudRate,
@@ -764,6 +762,10 @@
             return;
         }
 
+        if (state.collectorEnabled || state.preparingQuestionStart || state.isReading) {
+            return;
+        }
+
         state.disconnecting = true;
         stopTimer();
 
@@ -820,6 +822,10 @@
         }
 
         if (event.target.closest('[data-usb-disconnect]')) {
+            if (state.collectorEnabled || state.preparingQuestionStart || state.isReading) {
+                return;
+            }
+
             closeConnection();
         }
     });

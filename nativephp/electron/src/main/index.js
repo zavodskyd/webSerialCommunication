@@ -1,4 +1,4 @@
-import {app, session} from 'electron'
+import {app, BrowserWindow, dialog, session} from 'electron'
 import NativePHP from '#plugin'
 import {existsSync, readdirSync, readFileSync, statSync, writeFileSync} from 'fs'
 import path from 'path'
@@ -120,6 +120,33 @@ const configureWebSerial = () => {
         ) || portName.includes('usbserial');
     };
 
+    const formatDeviceId = (value, label) => {
+        const normalizedValue = normalizeDeviceId(value);
+
+        if (normalizedValue === null || Number.isNaN(normalizedValue)) {
+            return null;
+        }
+
+        return `${label} 0x${normalizedValue.toString(16).toUpperCase().padStart(4, '0')}`;
+    };
+
+    const formatSerialPortLabel = (port) => {
+        const identifiers = [
+            formatDeviceId(port.vendorId, 'VID'),
+            formatDeviceId(port.productId, 'PID'),
+        ].filter(Boolean);
+        const names = [
+            port.displayName,
+            port.portName,
+            port.portId,
+        ].filter((value, index, values) => value && values.indexOf(value) === index);
+        const label = names.length > 0 ? names.join(' | ') : 'Neznáme serial zariadenie';
+
+        return identifiers.length > 0
+            ? `${label} (${identifiers.join(', ')})`
+            : label;
+    };
+
     session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => {
         if (permission !== 'serial') {
             return false;
@@ -146,10 +173,8 @@ const configureWebSerial = () => {
         details.deviceType === 'serial' && isLocalNativePhpOrigin(details.origin)
     ));
 
-    session.defaultSession.on('select-serial-port', (event, portList, _webContents, callback) => {
+    session.defaultSession.on('select-serial-port', (event, portList, webContents, callback) => {
         event.preventDefault();
-
-        const selectedPort = portList.find(isVotingUsbAdapter);
 
         console.log('[NativePHP] Serial ports:', portList.map((port) => ({
             portId: port.portId,
@@ -158,6 +183,38 @@ const configureWebSerial = () => {
             vendorId: port.vendorId,
             productId: port.productId,
         })));
+
+        if (portList.length === 0) {
+            console.log('[NativePHP] Selected serial port: none');
+            callback('');
+
+            return;
+        }
+
+        const sortedPorts = [...portList].sort((left, right) => (
+            Number(isVotingUsbAdapter(right)) - Number(isVotingUsbAdapter(left))
+        ));
+        const buttons = sortedPorts.map(formatSerialPortLabel);
+        const preferredPortIndex = sortedPorts.findIndex(isVotingUsbAdapter);
+        const cancelId = buttons.length;
+        const selectionDialogOptions = {
+            type: 'question',
+            title: 'Vyber USB zariadenie',
+            message: 'Vyber serial/USB zariadenie pre hlasovanie',
+            detail: 'Ak zariadenie nemá očakávaný názov, vyber ho podľa portu, VID/PID alebo popisu.',
+            buttons: [...buttons, 'Zrušiť'],
+            defaultId: preferredPortIndex >= 0 ? preferredPortIndex : 0,
+            cancelId,
+            noLink: true,
+        };
+        const parentWindow = BrowserWindow.fromWebContents(webContents);
+        const selectedButtonIndex = parentWindow
+            ? dialog.showMessageBoxSync(parentWindow, selectionDialogOptions)
+            : dialog.showMessageBoxSync(selectionDialogOptions);
+        const selectedPort = selectedButtonIndex === cancelId
+            ? null
+            : sortedPorts[selectedButtonIndex];
+
         console.log('[NativePHP] Selected serial port:', selectedPort?.portName ?? selectedPort?.portId ?? 'none');
 
         callback(selectedPort?.portId ?? '');

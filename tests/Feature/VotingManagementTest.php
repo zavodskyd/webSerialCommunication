@@ -229,6 +229,59 @@ test('user can change voting question order', function () {
     expect($firstQuestion->fresh()->order)->toBe(1);
 });
 
+test('question order input syncs spinner changes immediately', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
+    ]);
+
+    $voting->createQuestionWithDefaults(
+        order: 1,
+        label: 'Hlasovanie 1',
+        text: 'Prvá otázka',
+        responseTimeSeconds: 30,
+    );
+
+    Livewire::test(VotingEditor::class, ['voting' => $voting])
+        ->assertSeeHtml('wire:model.live.number="questionRows.0.order"')
+        ->assertSeeHtml('w-1/2 rounded-2xl');
+});
+
+test('user can move a question into an occupied order', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
+    ]);
+
+    $firstQuestion = $voting->createQuestionWithDefaults(
+        order: 1,
+        label: 'Hlasovanie 1',
+        text: 'Prvá otázka',
+        responseTimeSeconds: 30,
+    );
+
+    $secondQuestion = $voting->createQuestionWithDefaults(
+        order: 2,
+        label: 'Hlasovanie 2',
+        text: 'Druhá otázka',
+        responseTimeSeconds: 30,
+    );
+
+    $thirdQuestion = $voting->createQuestionWithDefaults(
+        order: 3,
+        label: 'Hlasovanie 3',
+        text: 'Tretia otázka',
+        responseTimeSeconds: 30,
+    );
+
+    Livewire::test(VotingEditor::class, ['voting' => $voting])
+        ->set('questionRows.2.order', 1)
+        ->call('saveQuestion', $thirdQuestion->id)
+        ->assertHasNoErrors();
+
+    expect($thirdQuestion->fresh()->order)->toBe(1);
+    expect($firstQuestion->fresh()->order)->toBe(2);
+    expect($secondQuestion->fresh()->order)->toBe(3);
+});
+
 test('user can assign vote weights to devices for a voting', function () {
     $voting = Voting::query()->create([
         'name' => 'Valné zhromaždenie',

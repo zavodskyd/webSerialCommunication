@@ -94,6 +94,8 @@ return [
         'database/nativephp-seed.sqlite',
     ],
 
+    'seed_database_path' => env('NATIVEPHP_SEED_DATABASE_PATH', database_path('nativephp-seed.sqlite')),
+
     /**
      * The NativePHP updater configuration.
      */

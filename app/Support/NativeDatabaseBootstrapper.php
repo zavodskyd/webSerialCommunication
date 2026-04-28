@@ -72,7 +72,7 @@ class NativeDatabaseBootstrapper
 
     public static function bundledSeedDatabasePath(): string
     {
-        return database_path(self::BUNDLED_SEED_DATABASE);
+        return config('nativephp.seed_database_path', database_path(self::BUNDLED_SEED_DATABASE));
     }
 
     private function defaultSeedDatabasePath(): string

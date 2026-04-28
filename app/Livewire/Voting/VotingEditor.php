@@ -7,6 +7,7 @@ use App\Models\Voting;
 use App\Models\VotingAttendee;
 use App\Models\VotingQuestion;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Validate;
@@ -167,11 +168,14 @@ class VotingEditor extends Component
             ],
         )->validate();
 
-        $question->update([
-            'order' => $row['order'],
-            'text' => $row['text'],
-            'response_time_seconds' => $row['response_time_seconds'],
-        ]);
+        DB::transaction(function () use ($question, $row): void {
+            $this->moveQuestionToOrder($question, (int) $row['order']);
+
+            $question->update([
+                'text' => $row['text'],
+                'response_time_seconds' => $row['response_time_seconds'],
+            ]);
+        });
 
         $this->loadQuestions();
         session()->flash('status', 'Otázka bola uložená.');
@@ -369,6 +373,46 @@ class VotingEditor extends Component
         return $this->voting->questions()
             ->whereKey($questionId)
             ->firstOrFail();
+    }
+
+    private function moveQuestionToOrder(VotingQuestion $question, int $targetOrder): void
+    {
+        $currentOrder = $question->order;
+
+        if ($targetOrder === $currentOrder) {
+            return;
+        }
+
+        $temporaryOrder = max(
+            $targetOrder,
+            (int) $this->voting->questions()->max('order'),
+        ) + $question->id + 1000;
+
+        $question->update(['order' => $temporaryOrder]);
+
+        if ($targetOrder < $currentOrder) {
+            $this->voting->questions()
+                ->where('id', '!=', $question->id)
+                ->whereBetween('order', [$targetOrder, $currentOrder - 1])
+                ->reorder()
+                ->orderByDesc('order')
+                ->get()
+                ->each(fn (VotingQuestion $affectedQuestion): bool => $affectedQuestion->update([
+                    'order' => $affectedQuestion->order + 1,
+                ]));
+        } else {
+            $this->voting->questions()
+                ->where('id', '!=', $question->id)
+                ->whereBetween('order', [$currentOrder + 1, $targetOrder])
+                ->reorder()
+                ->orderBy('order')
+                ->get()
+                ->each(fn (VotingQuestion $affectedQuestion): bool => $affectedQuestion->update([
+                    'order' => $affectedQuestion->order - 1,
+                ]));
+        }
+
+        $question->update(['order' => $targetOrder]);
     }
 
     private function updateDeviceWeight(int $deviceId, string|int|float $weight): void

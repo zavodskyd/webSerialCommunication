@@ -69,12 +69,8 @@ test('it imports bundled application data when native database is empty', functi
 test('it imports the bundled native seed database by default', function () {
     config(['nativephp-internal.running' => true]);
 
-    $seedPath = NativeDatabaseBootstrapper::bundledSeedDatabasePath();
-    $backupPath = is_file($seedPath) ? tempnam(sys_get_temp_dir(), 'native-seed-backup-') : null;
-
-    if ($backupPath !== null) {
-        copy($seedPath, $backupPath);
-    }
+    $seedPath = tempnam(sys_get_temp_dir(), 'native-default-seed-');
+    config(['nativephp.seed_database_path' => $seedPath]);
 
     try {
         $sourcePath = createBundledSeedDatabase([
@@ -94,12 +90,7 @@ test('it imports the bundled native seed database by default', function () {
         expect(DB::table('devices')->where('device_number', '777')->exists())->toBeTrue();
         expect(DB::table('votings')->where('name', 'Bundled hlasovanie')->exists())->toBeTrue();
     } finally {
-        if ($backupPath !== null) {
-            copy($backupPath, $seedPath);
-            @unlink($backupPath);
-        } else {
-            @unlink($seedPath);
-        }
+        @unlink($seedPath);
     }
 });
 

@@ -90,6 +90,7 @@ test('native serial runtime separates connection from transceiver collection', f
 
     expect($consoleView)
         ->toContain('wire:ignore')
+        ->toContain('state.serialPort = await navigator.serial.requestPort();')
         ->toContain('await initializeDevice();')
         ->toContain('const startQuestionFromFrontend = async () => {')
         ->toContain('await startCommunication();')
@@ -97,11 +98,27 @@ test('native serial runtime separates connection from transceiver collection', f
         ->toContain("await sendHexCommand('5a80da', 3);")
         ->toContain('const finishQuestionFromFrontend = async (remainingSeconds = state.remainingSeconds) => {')
         ->toContain('await stopCommunication();')
+        ->toContain('!state.isConnected || state.collectorEnabled || state.preparingQuestionStart || state.isReading')
+        ->toContain('if (state.collectorEnabled || state.preparingQuestionStart || state.isReading) {')
         ->toContain("window.addEventListener('pagehide', disconnectBeforeLeavingConsole);")
         ->toContain("document.addEventListener('livewire:navigating', disconnectBeforeLeavingConsole);")
+        ->not->toContain('serialPortFilters')
         ->not->toContain('wire:click="finishQuestion"');
 
     expect(substr_count($consoleView, 'await startCommunication();'))->toBe(2);
+});
+
+test('native app shows all serial ports for manual usb selection', function () {
+    $mainProcess = file_get_contents(base_path('nativephp/electron/src/main/index.js'));
+
+    expect($mainProcess)
+        ->toContain("import {app, BrowserWindow, dialog, session} from 'electron'")
+        ->toContain("session.defaultSession.on('select-serial-port'")
+        ->toContain('formatSerialPortLabel')
+        ->toContain('dialog.showMessageBoxSync')
+        ->toContain("'Vyber USB zariadenie'")
+        ->toContain('Number(isVotingUsbAdapter(right)) - Number(isVotingUsbAdapter(left))')
+        ->not->toContain('const selectedPort = portList.find(isVotingUsbAdapter);');
 });
 
 test('console persists runtime state for presentation polling', function () {

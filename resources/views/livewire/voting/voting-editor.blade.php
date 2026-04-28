@@ -250,7 +250,7 @@
                         <div class="grid gap-5 xl:grid-cols-[0.8fr,2fr,0.8fr,auto] xl:items-start">
                             <div>
                                 <label class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Poradie</label>
-                                <input type="number" min="1" wire:model.blur="questionRows.{{ $index }}.order" class="mt-2 w-full rounded-2xl border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-900 focus:border-sky-500 focus:ring-sky-300">
+                                <input type="number" min="1" wire:model.live.number="questionRows.{{ $index }}.order" class="mt-2 w-1/2 rounded-2xl border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-900 focus:border-sky-500 focus:ring-sky-300">
                             </div>
 
                             <div class="space-y-4">

@@ -305,6 +305,64 @@ test('when automatic results are disabled console advances immediately after fin
     expect($component->currentQuestionId)->toBe($secondQuestion->id);
 });
 
+test('finishing the last question marks the voting as finished and clears runtime flags', function () {
+    [, $voting] = createConsoleFixture(autoShowResults: false);
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+    $component->startQuestion();
+    $component->finishQuestion(0);
+
+    $voting->refresh();
+
+    expect($voting->status)->toBe('finished');
+    expect($voting->finished_at)->not->toBeNull();
+    expect($voting->runtime_collector_enabled)->toBeFalse();
+    expect($voting->runtime_timer_running)->toBeFalse();
+    expect($voting->runtime_results_visible)->toBeFalse();
+    expect($voting->runtime_remaining_seconds)->toBe(0);
+});
+
+test('closing the results modal of the last question marks the voting as finished', function () {
+    [, $voting] = createConsoleFixture(autoShowResults: true);
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+    $component->startQuestion();
+    $component->finishQuestion(0);
+
+    expect($component->resultsVisible)->toBeTrue();
+
+    $component->closeResultsAndAdvance();
+
+    $voting->refresh();
+
+    expect($voting->status)->toBe('finished');
+    expect($voting->finished_at)->not->toBeNull();
+    expect($component->resultsVisible)->toBeFalse();
+});
+
+test('finishing a non-last question does not mark the voting as finished', function () {
+    [, $voting] = createConsoleFixture(autoShowResults: false);
+
+    $voting->createQuestionWithDefaults(
+        order: 2,
+        label: 'Hlasovanie 2',
+        text: 'Druhá otázka',
+        responseTimeSeconds: 20,
+    );
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+    $component->startQuestion();
+    $component->finishQuestion(0);
+
+    $voting->refresh();
+
+    expect($voting->status)->not->toBe('finished');
+    expect($voting->finished_at)->toBeNull();
+});
+
 test('previous question moves to the nearest earlier question', function () {
     [, $voting, $firstQuestion] = createConsoleFixture();
 

@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  php:
-    name: PHP — Pint + Pest
+  verify:
+    name: Lint + Build + Test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -25,6 +25,12 @@ jobs:
           extensions: mbstring, sqlite, pdo_sqlite, intl, dom, fileinfo
           coverage: none
           tools: composer:v2
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
       - name: Get composer cache directory
         id: composer-cache
@@ -41,6 +47,9 @@ jobs:
       - name: Install composer dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
 
+      - name: Install npm dependencies
+        run: npm ci
+
       - name: Prepare environment
         run: |
           cp .env.example .env
@@ -49,24 +58,8 @@ jobs:
       - name: Lint — Laravel Pint
         run: vendor/bin/pint --test --format agent
 
+      - name: Build — Vite
+        run: npm run build
+
       - name: Test — Pest
         run: php artisan test --compact
-
-  js:
-    name: JS — Vite build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build assets
-        run: npm run build

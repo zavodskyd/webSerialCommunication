@@ -172,6 +172,7 @@ return [
      */
     'prebuild' => [
         'php artisan native:prepare-seed-database',
+        'php artisan build:stamp-version',
     ],
 
     'postbuild' => [

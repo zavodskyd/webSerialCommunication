@@ -1,0 +1,220 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\Device;
+use App\Models\Vote;
+use App\Models\VoteEvent;
+use App\Models\Voting;
+use App\Models\VotingAttendee;
+use App\Services\Voting\VoteRecorder;
+use App\Services\Voting\VoteRecordingResult;
+
+function createRecorderFixture(int $weight = 5): array
+{
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
+        'auto_show_results' => true,
+    ]);
+
+    $question = $voting->createQuestionWithDefaults(
+        order: 1,
+        label: 'Hlasovanie 1',
+        text: 'Schváliť program?',
+        responseTimeSeconds: 30,
+    );
+
+    $device = Device::query()->create([
+        'device_number' => '001',
+        'code_a' => '2081a1',
+        'code_b' => '2091b1',
+        'code_c' => '20a181',
+        'code_d' => '',
+        'code_e' => '',
+        'code_f' => '',
+        'code_ruka' => '20e151',
+    ]);
+
+    VotingAttendee::query()->create([
+        'voting_id' => $voting->id,
+        'device_id' => $device->id,
+        'weight' => $weight,
+        'is_present' => true,
+        'can_vote' => true,
+    ]);
+
+    return [$voting, $question, $device];
+}
+
+test('records an accepted vote and returns the device + button details', function () {
+    [$voting, $question, $device] = createRecorderFixture();
+
+    // Move voting/question into the live-collecting state.
+    $voting->forceFill(['runtime_collector_enabled' => true])->save();
+    $question->update(['status' => 'live']);
+
+    $result = app(VoteRecorder::class)->record(
+        code: $device->code_a,
+        voting: $voting,
+        question: $question,
+        collectorEnabledHint: true,
+    );
+
+    expect($result)->toBeInstanceOf(VoteRecordingResult::class);
+    expect($result->accepted)->toBeTrue();
+    expect($result->deviceNumber)->toBe('001');
+    expect($result->buttonName)->toBe('A');
+    expect($result->rejectionReason)->toBeNull();
+    expect(Vote::query()->count())->toBe(1);
+});
+
+test('rejects when collector is off and DB also says not collecting', function () {
+    [$voting, $question, $device] = createRecorderFixture();
+
+    // Voting is in the default "not collecting" state.
+    $result = app(VoteRecorder::class)->record(
+        code: $device->code_a,
+        voting: $voting,
+        question: $question,
+        collectorEnabledHint: false,
+    );
+
+    expect($result->accepted)->toBeFalse();
+    expect($result->rejectionReason)->toBe('collector_disabled');
+    expect(Vote::query()->count())->toBe(0);
+});
+
+test('rejects unknown hex codes silently', function () {
+    [$voting, $question] = createRecorderFixture();
+
+    $voting->forceFill(['runtime_collector_enabled' => true])->save();
+    $question->update(['status' => 'live']);
+
+    $result = app(VoteRecorder::class)->record(
+        code: 'deadbe',
+        voting: $voting,
+        question: $question,
+        collectorEnabledHint: true,
+    );
+
+    expect($result->accepted)->toBeFalse();
+    expect($result->rejectionReason)->toBe('unknown_code');
+    expect($result->deviceNumber)->toBeNull();
+    expect(Vote::query()->count())->toBe(0);
+});
+
+test('rejects Ruka button (non-voting button)', function () {
+    [$voting, $question, $device] = createRecorderFixture();
+
+    $voting->forceFill(['runtime_collector_enabled' => true])->save();
+    $question->update(['status' => 'live']);
+
+    $result = app(VoteRecorder::class)->record(
+        code: $device->code_ruka,
+        voting: $voting,
+        question: $question,
+        collectorEnabledHint: true,
+    );
+
+    expect($result->accepted)->toBeFalse();
+    expect($result->rejectionReason)->toBe('non_voting_button');
+    expect($result->deviceNumber)->toBe('001');
+    expect($result->buttonName)->toBe('Ruka');
+    expect(Vote::query()->count())->toBe(0);
+});
+
+test('rejects when attendee weight is 0', function () {
+    [$voting, $question, $device] = createRecorderFixture(weight: 0);
+
+    $voting->forceFill(['runtime_collector_enabled' => true])->save();
+    $question->update(['status' => 'live']);
+
+    $result = app(VoteRecorder::class)->record(
+        code: $device->code_a,
+        voting: $voting,
+        question: $question,
+        collectorEnabledHint: true,
+    );
+
+    expect($result->accepted)->toBeFalse();
+    expect($result->rejectionReason)->toBe('zero_weight');
+    expect(Vote::query()->count())->toBe(0);
+});
+
+test('accepts a vote even when collector hint is false but DB says collecting', function () {
+    [$voting, $question, $device] = createRecorderFixture();
+
+    // DB says collecting but caller's in-memory hint is stale (false).
+    $voting->forceFill(['runtime_collector_enabled' => true])->save();
+    $question->update(['status' => 'live']);
+
+    $result = app(VoteRecorder::class)->record(
+        code: $device->code_a,
+        voting: $voting,
+        question: $question,
+        collectorEnabledHint: false,
+    );
+
+    expect($result->accepted)->toBeTrue();
+    expect(Vote::query()->count())->toBe(1);
+});
+
+test('every call writes one vote_events row regardless of accept/reject', function () {
+    [$voting, $question, $device] = createRecorderFixture();
+
+    $voting->forceFill(['runtime_collector_enabled' => true])->save();
+    $question->update(['status' => 'live']);
+
+    // Accepted vote
+    app(VoteRecorder::class)->record(
+        code: $device->code_a,
+        voting: $voting,
+        question: $question,
+        collectorEnabledHint: true,
+        source: 'web-serial',
+    );
+
+    // Rejected vote (unknown code)
+    app(VoteRecorder::class)->record(
+        code: 'deadbe',
+        voting: $voting,
+        question: $question,
+        collectorEnabledHint: true,
+        source: 'node-helper',
+    );
+
+    expect(VoteEvent::query()->count())->toBe(2);
+
+    $accepted = VoteEvent::query()->where('accepted', true)->first();
+    expect($accepted->source)->toBe('web-serial');
+    expect($accepted->raw_hex)->toBe($device->code_a);
+    expect($accepted->button_name)->toBe('A');
+    expect($accepted->device_id)->toBe($device->id);
+
+    $rejected = VoteEvent::query()->where('accepted', false)->first();
+    expect($rejected->source)->toBe('node-helper');
+    expect($rejected->rejection_reason)->toBe('unknown_code');
+    expect($rejected->device_id)->toBeNull();
+});
+
+test('result toArray returns the same shape as the legacy Livewire response', function () {
+    [$voting, $question, $device] = createRecorderFixture();
+
+    $voting->forceFill(['runtime_collector_enabled' => true])->save();
+    $question->update(['status' => 'live']);
+
+    $result = app(VoteRecorder::class)->record(
+        code: $device->code_a,
+        voting: $voting,
+        question: $question,
+        collectorEnabledHint: true,
+    );
+
+    expect($result->toArray())->toHaveKeys([
+        'accepted',
+        'message',
+        'lastMatchedDeviceNumber',
+        'lastButtonName',
+        'results',
+    ]);
+});

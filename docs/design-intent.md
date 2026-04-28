@@ -4,6 +4,26 @@ Tento dokument je zoznam miest, ktoré pri prvom pohľade pôsobia ako bug, ale 
 
 Pridávajte sem ďalšie body, ktoré sa v review opakujú ako "to nie je bug, to je feature".
 
+## Sériový reader v Electron main procese, nie v Blade view
+
+Pôvodná implementácia mala Web Serial API priamo vo `<script>` bloku Livewire komponenty (`voting-console.blade.php`, ~870 riadkov, z toho ~650 JS). Tento prístup neustále zlyhával na Q2+ (prvých ~5s hlasov stratených, "Pripojené" preblíkavalo, "Odpojiť" nereagoval) kvôli race conditions medzi async JS state a Livewire morph cyklom.
+
+Riešenie: sériový reader teraz beží ako samostatný Node proces v Electron main procese (`electron/serial-helper/`), ktorý komunikuje s Laravelom cez localhost HTTP. Livewire komponent je čistý — bez JS state machinery, bez `@script` bloku, bez Web Serial API.
+
+**Architektúra**:
+
+- Driver flag `SERIAL_DRIVER` v `.env` rozhoduje:
+  - `web-serial` (default) — pôvodná Web Serial implementácia, zachovaná pre rollback.
+  - `node-helper` — nový tok cez Node serial-helper.
+- `node-helper` cesta:
+  - Helper sa spúšťa cez NativePHP `ChildProcess::node()` v `NativeAppServiceProvider::boot()`.
+  - Helper číta sériový port pomocou npm `serialport` knižnice.
+  - Každý 3-byte frame postuje na `POST /internal/serial-frame` (auth cez `X-Internal-Token` bearer + localhost-only middleware).
+  - Laravel rieši hlas cez `App\Services\Voting\VoteRecorder` (rovnaký service ako Livewire path).
+  - Operátorská konzola používa `wire:poll.500ms="liveTick"` na refresh — žiadny JS state.
+
+**Nepresúvať** sériovú logiku späť do Blade view ani do JS. Bola to bolesť, ktorú nechceme zopakovať.
+
 ## Permissive importy
 
 `DeviceController::import` (CSV) a `DeviceController::loadExternalDb` (externá SQLite) akceptujú aj riadky, kde sú code stĺpce prázdne alebo nie sú validné hex hodnoty. Riadok s `code_a = ""` alebo `code_a = "n/a"` je legitímny stav "toto tlačidlo nie je na tomto zariadení namapované" — nie je to malformed input.

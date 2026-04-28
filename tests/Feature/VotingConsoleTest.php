@@ -7,6 +7,7 @@ use App\Models\Vote;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
 use App\Models\VotingQuestion;
+use Illuminate\Support\Carbon;
 
 test('pause keeps collector active and still accepts votes', function () {
     [, $voting, , $device] = createConsoleFixture();
@@ -45,6 +46,94 @@ test('start resumes a paused question without resetting the remaining time', fun
     expect($component->collectorEnabled)->toBeTrue();
     expect($component->remainingSeconds)->toBe(12);
     expect($question->fresh()->status)->toBe('live');
+});
+
+test('helper driver: liveTick marks helper as unhealthy when not running', function () {
+    config(['serial.driver' => 'node-helper']);
+
+    [, $voting] = createConsoleFixture();
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+
+    expect($component->helperHealthy)->toBeNull();
+
+    // No helper port file exists in tests, so SerialHelperClient::health() returns ok=false.
+    $component->liveTick();
+
+    expect($component->helperHealthy)->toBeFalse();
+    expect($component->helperQueuedFrames)->toBe(0);
+});
+
+test('events log toggle flips the visible flag', function () {
+    [, $voting] = createConsoleFixture();
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+
+    expect($component->eventsLogVisible)->toBeFalse();
+
+    $component->toggleEventsLog();
+    expect($component->eventsLogVisible)->toBeTrue();
+
+    $component->toggleEventsLog();
+    expect($component->eventsLogVisible)->toBeFalse();
+});
+
+test('node helper buffers frames to disk when laravel POST fails', function () {
+    $helper = file_get_contents(base_path('electron/serial-helper/index.js'));
+
+    // The retry buffer is the conference-day insurance: if Laravel is briefly
+    // unreachable, frames must not be dropped silently.
+    expect($helper)
+        ->toContain('const QUEUE_FILE')
+        ->toContain('serial-helper-queue.jsonl')
+        ->toContain('const QUEUE_DRAIN_INTERVAL_MS')
+        ->toContain('const QUEUE_MAX_ATTEMPTS')
+        ->toContain('function loadQueueFromDisk()')
+        ->toContain('function persistQueue()')
+        ->toContain('function scheduleQueueDrain()')
+        ->toContain('async function drainQueue()')
+        ->toContain('outbox.push(entry)')
+        ->toContain('queuedFrames: outbox.length');
+});
+
+test('helper driver: pause then resume does not count paused wall-clock time toward the timer', function () {
+    config(['serial.driver' => 'node-helper']);
+
+    [, $voting, $question] = createConsoleFixture();
+
+    // Open the question 5s ago, then pause: 25s should be remaining.
+    // Pin to whole-second boundary because opened_at gets second-truncated by SQLite
+    // and Carbon's sub-second diffs would skew the assertions.
+    Carbon::setTestNow(now()->startOfSecond());
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+    $component->startQuestion();
+
+    // Travel 5s into the question.
+    Carbon::setTestNow(now()->addSeconds(5));
+    $component->pauseQuestion();
+
+    expect($component->remainingSeconds)->toBe(25);
+
+    // Stay paused for 60s of wall-clock. Without the fix this would consume
+    // the 30s budget entirely; with the fix opened_at gets shifted on resume.
+    Carbon::setTestNow(now()->addSeconds(60));
+    $component->resumeQuestion();
+
+    expect($component->timerRunning)->toBeTrue();
+    expect($component->remainingSeconds)->toBe(25);
+
+    // One more second, liveTick should report 24s remaining (not -36s).
+    Carbon::setTestNow(now()->addSeconds(1));
+    $component->liveTick();
+
+    expect($component->remainingSeconds)->toBe(24);
+    expect($question->fresh()->status)->toBe('live');
+
+    Carbon::setTestNow();
 });
 
 test('start returns immediate console state for native serial runtime', function () {

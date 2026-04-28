@@ -85,6 +85,10 @@ vendor/bin/pint --dirty --format agent
 - The serial protocol is duplicated between `serial-communication.blade.php` and `voting-console.blade.php`. If you change init bytes or parsing, update both.
 - Tests prefer feature tests + factories over unit tests — see `tests/Feature/VotingConsoleTest.php` for the canonical pattern (Livewire `Livewire::test(Component::class, [...])`).
 
+## Serial driver flag
+
+`config/serial.php` exposes `serial.driver`, sourced from env `SERIAL_DRIVER` (default `web-serial`). Flipping it to `node-helper` is the cutover switch from the in-Livewire Web Serial reader to the Electron-main Node serial helper that posts frames into `/internal/serial-frame`. Default stays `web-serial` until the helper ships and Phase 5's UI cutover lands.
+
 ## Project docs to read before changing behaviour
 
 - `docs/technical-overview.md` — architektúra, routy, dátový model, sériový protokol.

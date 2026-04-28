@@ -51,6 +51,11 @@ class VotingQuestion extends Model
         return $this->hasMany(Vote::class);
     }
 
+    public function voteEvents(): HasMany
+    {
+        return $this->hasMany(VoteEvent::class);
+    }
+
     /**
      * @return array<int, array{key: string, label: string, color: string|null, weighted_total: float, vote_count: int}>
      */

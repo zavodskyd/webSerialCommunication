@@ -145,6 +145,16 @@
                             </div>
                         @endforeach
                     </div>
+
+                    <div class="mt-6">
+                        <a
+                            href="{{ route('votings.questions.events-export', ['voting' => $voting, 'question' => $currentQuestion]) }}"
+                            download
+                            class="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                            Stiahnuť log hlasov (CSV)
+                        </a>
+                    </div>
                 </div>
             </section>
 
@@ -186,6 +196,10 @@
                 </div>
             </aside>
         </div>
+
+        <p class="mt-6 text-center text-xs font-mono text-slate-400">
+            build {{ \App\Support\BuildVersion::current() }}
+        </p>
     </div>
 
     @if ($resultsVisible)

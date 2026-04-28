@@ -443,8 +443,11 @@ class VotingConsole extends Component
             return;
         }
 
+        // Don't touch voting.status — finishQuestion already set it to 'draft'
+        // and the codebase only ever uses 'draft' / 'live'. Adding a third value
+        // would be a behaviour change beyond the scope of this fix; finished_at
+        // is the unambiguous signal.
         $this->voting->forceFill([
-            'status' => 'finished',
             'finished_at' => now(),
             'runtime_remaining_seconds' => 0,
             'runtime_timer_running' => false,

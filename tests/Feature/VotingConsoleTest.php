@@ -305,7 +305,7 @@ test('when automatic results are disabled console advances immediately after fin
     expect($component->currentQuestionId)->toBe($secondQuestion->id);
 });
 
-test('finishing the last question marks the voting as finished and clears runtime flags', function () {
+test('finishing the last question stamps finished_at and clears runtime flags', function () {
     [, $voting] = createConsoleFixture(autoShowResults: false);
 
     $component = app(VotingConsole::class);
@@ -315,7 +315,6 @@ test('finishing the last question marks the voting as finished and clears runtim
 
     $voting->refresh();
 
-    expect($voting->status)->toBe('finished');
     expect($voting->finished_at)->not->toBeNull();
     expect($voting->runtime_collector_enabled)->toBeFalse();
     expect($voting->runtime_timer_running)->toBeFalse();
@@ -323,7 +322,7 @@ test('finishing the last question marks the voting as finished and clears runtim
     expect($voting->runtime_remaining_seconds)->toBe(0);
 });
 
-test('closing the results modal of the last question marks the voting as finished', function () {
+test('closing the results modal of the last question stamps finished_at', function () {
     [, $voting] = createConsoleFixture(autoShowResults: true);
 
     $component = app(VotingConsole::class);
@@ -337,12 +336,11 @@ test('closing the results modal of the last question marks the voting as finishe
 
     $voting->refresh();
 
-    expect($voting->status)->toBe('finished');
     expect($voting->finished_at)->not->toBeNull();
     expect($component->resultsVisible)->toBeFalse();
 });
 
-test('finishing a non-last question does not mark the voting as finished', function () {
+test('finishing a non-last question does not stamp finished_at', function () {
     [, $voting] = createConsoleFixture(autoShowResults: false);
 
     $voting->createQuestionWithDefaults(
@@ -359,7 +357,6 @@ test('finishing a non-last question does not mark the voting as finished', funct
 
     $voting->refresh();
 
-    expect($voting->status)->not->toBe('finished');
     expect($voting->finished_at)->toBeNull();
 });
 

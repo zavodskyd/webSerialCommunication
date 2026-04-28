@@ -12,10 +12,7 @@ test('home redirects to voting management', function () {
         ->assertRedirect('/votings');
 });
 
-test('test screen replaces dashboard', function () {
+test('legacy auth surfaces are gone', function () {
     $this->get('/dashboard')->assertNotFound();
-
-    $this->get('/test')
-        ->assertOk()
-        ->assertSeeText('Test');
+    $this->get('/test')->assertNotFound();
 });

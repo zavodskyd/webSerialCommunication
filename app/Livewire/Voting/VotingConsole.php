@@ -10,6 +10,7 @@ use App\Services\Voting\VoteRecorder;
 use App\Support\SerialHelperClient;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Collection;
 use Livewire\Component;
 
 class VotingConsole extends Component
@@ -36,6 +37,8 @@ class VotingConsole extends Component
 
     public ?string $lastButtonName = null;
 
+    public bool $eventsLogVisible = false;
+
     /**
      * --- node-helper driver state (only meaningful when SERIAL_DRIVER=node-helper) ---
      */
@@ -49,6 +52,24 @@ class VotingConsole extends Component
      * @var array<int, array{path: string, manufacturer: ?string, vendor_id: ?string, product_id: ?string}>
      */
     public array $availablePorts = [];
+
+    /**
+     * Last known helper liveness. null = not probed yet, true = reachable,
+     * false = unreachable / not running. Surfaced as a banner so Dušan sees
+     * the helper drop *before* he starts a question.
+     */
+    public ?bool $helperHealthy = null;
+
+    public int $helperQueuedFrames = 0;
+
+    /**
+     * Unix timestamp of the most recent helper health probe. Used to throttle
+     * the probe to once per HELPER_HEALTH_INTERVAL_SECONDS instead of every
+     * 500 ms tick.
+     */
+    public int $lastHelperHealthAt = 0;
+
+    private const HELPER_HEALTH_INTERVAL_SECONDS = 2;
 
     public function mount(Voting $voting, ?VotingQuestion $question = null): void
     {
@@ -144,6 +165,7 @@ class VotingConsole extends Component
     {
         if ($this->isHelperDriver()) {
             $this->refreshLastVoteFromEvents();
+            $this->probeHelperHealthIfDue();
         }
 
         if (! $this->collectorEnabled || ! $this->timerRunning) {
@@ -166,6 +188,22 @@ class VotingConsole extends Component
 
             $this->finishQuestion(0);
         }
+    }
+
+    private function probeHelperHealthIfDue(): void
+    {
+        $now = time();
+
+        if ($now - $this->lastHelperHealthAt < self::HELPER_HEALTH_INTERVAL_SECONDS) {
+            return;
+        }
+
+        $this->lastHelperHealthAt = $now;
+
+        $response = SerialHelperClient::health();
+
+        $this->helperHealthy = (bool) ($response['ok'] ?? false);
+        $this->helperQueuedFrames = is_int($response['queuedFrames'] ?? null) ? $response['queuedFrames'] : 0;
     }
 
     private function refreshLastVoteFromEvents(): void
@@ -232,9 +270,21 @@ class VotingConsole extends Component
             return;
         }
 
+        $question = $this->currentQuestion();
+
+        // Helper-driver only: snapshot remaining time at the pause moment
+        // from opened_at, since liveTick is the only clock and we'll need
+        // this to reconstruct opened_at on resume. The legacy web-serial
+        // path drives the timer from JS and pushes truth via syncRemainingSeconds,
+        // so don't overwrite that here.
+        if ($this->isHelperDriver() && $question->opened_at !== null) {
+            $elapsed = $question->opened_at->diffInSeconds(now(), false);
+            $this->remainingSeconds = max(0, $question->response_time_seconds - $elapsed);
+        }
+
         $this->timerRunning = false;
 
-        $this->currentQuestion()->update([
+        $question->update([
             'status' => 'paused',
         ]);
 
@@ -248,11 +298,25 @@ class VotingConsole extends Component
             return;
         }
 
-        $this->timerRunning = true;
+        $question = $this->currentQuestion();
 
-        $this->currentQuestion()->update([
-            'status' => 'live',
-        ]);
+        if ($this->isHelperDriver()) {
+            // Shift opened_at so liveTick's "elapsed = response_time_seconds - remainingSeconds"
+            // holds at this instant. Without this, paused wall-clock time gets counted
+            // and the timer skips ahead on resume.
+            $consumed = max(0, $question->response_time_seconds - $this->remainingSeconds);
+
+            $question->update([
+                'status' => 'live',
+                'opened_at' => now()->subSeconds($consumed),
+            ]);
+        } else {
+            $question->update([
+                'status' => 'live',
+            ]);
+        }
+
+        $this->timerRunning = true;
 
         $this->persistRuntimeState();
         $this->dispatchConsoleState();
@@ -407,6 +471,11 @@ class VotingConsole extends Component
         ];
     }
 
+    public function toggleEventsLog(): void
+    {
+        $this->eventsLogVisible = ! $this->eventsLogVisible;
+    }
+
     public function render(): View
     {
         $question = $this->currentQuestion()->load(['options', 'votes']);
@@ -421,7 +490,22 @@ class VotingConsole extends Component
             'results' => $question->summarizedResults(),
             'codeLookup' => $this->getCodeLookup(),
             'codePrefixes' => $this->getCodePrefixes(),
+            'eventsLog' => $this->eventsLogVisible ? $this->recentEventsForCurrentVoting() : collect(),
         ])->layout('layouts.app')->title('Operátorská konzola');
+    }
+
+    /**
+     * Last 100 vote_events across all questions in this voting, newest first.
+     * Powers the "Zobraziť log hlasov" diagnostic modal in the operator console.
+     */
+    private function recentEventsForCurrentVoting(): Collection
+    {
+        return VoteEvent::query()
+            ->where('voting_id', $this->voting->id)
+            ->latest('received_at')
+            ->limit(100)
+            ->with(['device:id,device_number', 'votingQuestion:id,order'])
+            ->get();
     }
 
     /**

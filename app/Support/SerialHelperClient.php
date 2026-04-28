@@ -51,4 +51,33 @@ class SerialHelperClient
 
         return is_array($payload) ? $payload : ['ok' => false, 'error' => 'invalid helper response'];
     }
+
+    /**
+     * Quick liveness probe used by the operator console banner. Short timeout
+     * so a wedged helper doesn't block the wire:poll cycle.
+     *
+     * @return array{ok: bool, queuedFrames?: int, isOpen?: bool, isCollecting?: bool, error?: string}
+     */
+    public static function health(): array
+    {
+        $port = SerialHelperTokens::helperPort();
+
+        if ($port === null) {
+            return ['ok' => false, 'error' => 'helper not running'];
+        }
+
+        try {
+            $response = Http::baseUrl('http://127.0.0.1:'.$port)
+                ->withHeader('X-Internal-Token', SerialHelperTokens::current())
+                ->timeout(1)
+                ->acceptJson()
+                ->get('/health');
+        } catch (ConnectionException) {
+            return ['ok' => false, 'error' => 'helper not reachable'];
+        }
+
+        $payload = $response->json();
+
+        return is_array($payload) ? $payload : ['ok' => false, 'error' => 'invalid helper response'];
+    }
 }

@@ -42,6 +42,9 @@ const LARAVEL_URL = process.env.LARAVEL_URL || 'http://127.0.0.1:8101';
 const TOKEN_FILE = path.join(LARAVEL_BASE, 'storage', 'framework', 'serial-helper.token');
 const PORT_FILE = path.join(LARAVEL_BASE, 'storage', 'framework', 'serial-helper.port');
 const LOG_FILE = path.join(LARAVEL_BASE, 'storage', 'logs', 'serial-helper.log');
+const QUEUE_FILE = path.join(LARAVEL_BASE, 'storage', 'framework', 'serial-helper-queue.jsonl');
+const QUEUE_DRAIN_INTERVAL_MS = 5000;
+const QUEUE_MAX_ATTEMPTS = 50;
 
 // Reverse-engineered Qomo protocol — see docs/design-intent.md.
 const SERIAL_OPTIONS = {
@@ -146,12 +149,75 @@ async function processFrames() {
     }
 }
 
-async function postFrame(hex) {
-    const token = readToken();
+// In-memory outbox of frames not yet ACKed by Laravel. Mirrors QUEUE_FILE on disk.
+// Frames are enqueued either when the immediate POST fails (network down, 5xx)
+// or when the helper boots with a non-empty queue file from a prior crash.
+// A background drainer flushes the queue on QUEUE_DRAIN_INTERVAL_MS while it's
+// non-empty.
+const outbox = [];
+let queueDrainTimer = null;
 
-    if (!token) {
-        log('warn', 'dropping frame because token is unavailable', { hex });
+function loadQueueFromDisk() {
+    try {
+        if (!fs.existsSync(QUEUE_FILE)) {
+            return;
+        }
+        const raw = fs.readFileSync(QUEUE_FILE, 'utf8');
+        for (const line of raw.split('\n')) {
+            if (line.trim() === '') {
+                continue;
+            }
+            try {
+                outbox.push(JSON.parse(line));
+            } catch (_) {
+                // skip malformed line
+            }
+        }
+        if (outbox.length > 0) {
+            log('info', 'recovered queued frames from disk', { count: outbox.length });
+            scheduleQueueDrain();
+        }
+    } catch (error) {
+        log('error', 'failed to load queue file', { error: error.message });
+    }
+}
+
+function persistQueue() {
+    try {
+        fs.mkdirSync(path.dirname(QUEUE_FILE), { recursive: true });
+        if (outbox.length === 0) {
+            try {
+                fs.unlinkSync(QUEUE_FILE);
+            } catch (_) {
+                // ignore
+            }
+            return;
+        }
+        const body = outbox.map((entry) => JSON.stringify(entry)).join('\n') + '\n';
+        fs.writeFileSync(QUEUE_FILE, body);
+    } catch (error) {
+        log('error', 'failed to persist queue file', { error: error.message });
+    }
+}
+
+function scheduleQueueDrain() {
+    if (queueDrainTimer !== null || outbox.length === 0) {
         return;
+    }
+    queueDrainTimer = setTimeout(async () => {
+        queueDrainTimer = null;
+        await drainQueue();
+        if (outbox.length > 0) {
+            scheduleQueueDrain();
+        }
+    }, QUEUE_DRAIN_INTERVAL_MS);
+    queueDrainTimer.unref?.();
+}
+
+async function postOnce(entry) {
+    const token = readToken();
+    if (!token) {
+        return { ok: false, retryable: true, reason: 'no token' };
     }
 
     try {
@@ -163,25 +229,84 @@ async function postFrame(hex) {
                 'X-Internal-Token': token,
             },
             body: JSON.stringify({
-                hex,
-                received_at: new Date().toISOString(),
+                hex: entry.hex,
+                received_at: entry.received_at,
             }),
         });
 
         if (!response.ok) {
-            log('error', 'frame POST returned non-2xx', {
-                hex,
-                status: response.status,
-            });
-            return;
+            const retryable = response.status >= 500 || response.status === 429 || response.status === 0;
+            return { ok: false, retryable, reason: `status ${response.status}`, status: response.status };
         }
 
         const body = await response.json().catch(() => null);
-
-        log('info', 'frame forwarded', { hex, accepted: body?.accepted ?? null });
+        return { ok: true, accepted: body?.accepted ?? null };
     } catch (error) {
-        log('error', 'frame POST failed', { hex, error: error.message });
+        return { ok: false, retryable: true, reason: error.message };
     }
+}
+
+async function drainQueue() {
+    if (outbox.length === 0) {
+        return;
+    }
+    const snapshot = outbox.slice();
+    for (const entry of snapshot) {
+        const result = await postOnce(entry);
+        if (result.ok) {
+            const idx = outbox.indexOf(entry);
+            if (idx !== -1) {
+                outbox.splice(idx, 1);
+            }
+            log('info', 'queued frame flushed', { hex: entry.hex, attempts: entry.attempts });
+            continue;
+        }
+
+        entry.attempts = (entry.attempts ?? 0) + 1;
+        if (entry.attempts >= QUEUE_MAX_ATTEMPTS) {
+            const idx = outbox.indexOf(entry);
+            if (idx !== -1) {
+                outbox.splice(idx, 1);
+            }
+            log('error', 'dropping frame after max retry attempts', {
+                hex: entry.hex,
+                attempts: entry.attempts,
+                reason: result.reason,
+            });
+            continue;
+        }
+        // Stop draining on first persistent failure to avoid hammering a
+        // sleeping Laravel — wait for the next scheduled tick.
+        log('warn', 'queue drain stalled, will retry', { reason: result.reason, queued: outbox.length });
+        break;
+    }
+    persistQueue();
+}
+
+async function postFrame(hex) {
+    const entry = { hex, received_at: new Date().toISOString(), attempts: 0 };
+    const result = await postOnce(entry);
+
+    if (result.ok) {
+        log('info', 'frame forwarded', { hex, accepted: result.accepted });
+        // Opportunistic: if we previously buffered frames, try to flush them now
+        // that Laravel is reachable again.
+        if (outbox.length > 0) {
+            await drainQueue();
+        }
+        return;
+    }
+
+    if (!result.retryable) {
+        log('error', 'frame POST returned non-retryable status, dropping', { hex, reason: result.reason });
+        return;
+    }
+
+    entry.attempts = 1;
+    outbox.push(entry);
+    persistQueue();
+    log('warn', 'frame queued for retry', { hex, reason: result.reason, queued: outbox.length });
+    scheduleQueueDrain();
 }
 
 // ---------- port operations -------------------------------------------------
@@ -303,7 +428,12 @@ app.use((req, res, next) => {
 });
 
 app.get('/health', (_, res) => {
-    res.json({ ok: true, isOpen: state.isOpen, isCollecting: state.isCollecting });
+    res.json({
+        ok: true,
+        isOpen: state.isOpen,
+        isCollecting: state.isCollecting,
+        queuedFrames: outbox.length,
+    });
 });
 
 app.post('/control', async (req, res) => {
@@ -349,13 +479,15 @@ app.post('/control', async (req, res) => {
 
 // ---------- bootstrap -------------------------------------------------------
 
+loadQueueFromDisk();
+
 const server = app.listen(0, '127.0.0.1', () => {
     const { port } = server.address();
 
     try {
         fs.mkdirSync(path.dirname(PORT_FILE), { recursive: true });
         fs.writeFileSync(PORT_FILE, String(port));
-        log('info', 'helper listening', { port });
+        log('info', 'helper listening', { port, queued: outbox.length });
     } catch (error) {
         log('error', 'could not write port file', { file: PORT_FILE, error: error.message });
     }

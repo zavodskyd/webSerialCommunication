@@ -47,6 +47,16 @@
             </div>
         </div>
 
+        @if ($helperHealthy === false)
+            <div class="rounded-2xl border border-rose-300 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-900">
+                ⚠ Sériový helper nereaguje. Hlasy nemusia byť zaznamenávané. Skontrolujte log <code class="font-mono">storage/logs/serial-helper.log</code>.
+            </div>
+        @elseif ($helperQueuedFrames > 0)
+            <div class="rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-900">
+                Helper má vo fronte {{ $helperQueuedFrames }} ne-odoslaných rámcov — aplikácia ich postupne doručí. Žiadny hlas sa nestratí.
+            </div>
+        @endif
+
         <div class="grid gap-8 xl:grid-cols-[320px,minmax(0,1fr),360px] 2xl:grid-cols-[360px,minmax(0,1fr),400px]">
             <aside class="space-y-6">
                 <div class="rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -161,6 +171,23 @@
                             </div>
                         @endforeach
                     </div>
+
+                    <div class="mt-6 flex flex-wrap gap-3">
+                        <a
+                            href="{{ route('votings.questions.events-export', ['voting' => $voting, 'question' => $currentQuestion]) }}"
+                            download
+                            class="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                            Stiahnuť log hlasov (CSV)
+                        </a>
+                        <button
+                            type="button"
+                            wire:click="toggleEventsLog"
+                            class="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                            {{ $eventsLogVisible ? 'Skryť log hlasov' : 'Zobraziť log hlasov' }}
+                        </button>
+                    </div>
                 </div>
             </section>
 
@@ -258,6 +285,69 @@
                             <p class="mt-2 text-sm text-slate-500">{{ $result['vote_count'] }} zariadení</p>
                         </div>
                     @endforeach
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if ($eventsLogVisible)
+        <div
+            class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4"
+            x-data
+            @keydown.escape.window="$wire.toggleEventsLog()"
+            @click.self="$wire.toggleEventsLog()"
+        >
+            <div class="w-full max-w-5xl rounded-[2rem] bg-white p-8 shadow-2xl">
+                <div class="flex items-start justify-between gap-6">
+                    <div>
+                        <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Log prijatých hlasov</p>
+                        <h2 class="mt-3 text-2xl font-semibold text-slate-900">Posledných 100 prijatých rámcov</h2>
+                        <p class="mt-2 text-sm text-slate-500">Zoradené najnovšie hore. Aktualizuje sa automaticky každých 500 ms.</p>
+                    </div>
+                    <button type="button" wire:click="toggleEventsLog" class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700">
+                        Zavrieť
+                    </button>
+                </div>
+
+                <div class="mt-6 max-h-[60vh] overflow-auto rounded-2xl border border-slate-200">
+                    <table class="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="bg-slate-50 text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">
+                            <tr>
+                                <th class="px-4 py-3 text-left">Čas</th>
+                                <th class="px-4 py-3 text-left">Otázka</th>
+                                <th class="px-4 py-3 text-left">Hex</th>
+                                <th class="px-4 py-3 text-left">Zdroj</th>
+                                <th class="px-4 py-3 text-left">Zariadenie</th>
+                                <th class="px-4 py-3 text-left">Tlačidlo</th>
+                                <th class="px-4 py-3 text-left">Stav</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            @forelse ($eventsLog as $event)
+                                <tr wire:key="event-log-{{ $event->id }}">
+                                    <td class="px-4 py-2 font-mono text-xs text-slate-500">{{ $event->received_at->format('H:i:s') }}</td>
+                                    <td class="px-4 py-2 text-slate-700">{{ $event->votingQuestion?->order ?? '—' }}</td>
+                                    <td class="px-4 py-2 font-mono text-xs text-slate-700">{{ $event->raw_hex }}</td>
+                                    <td class="px-4 py-2 text-slate-500">{{ $event->source }}</td>
+                                    <td class="px-4 py-2 text-slate-700">{{ $event->device?->device_number ?? '—' }}</td>
+                                    <td class="px-4 py-2 text-slate-700">{{ $event->button_name ?? '—' }}</td>
+                                    <td class="px-4 py-2">
+                                        @if ($event->accepted)
+                                            <span class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">Prijatý</span>
+                                        @else
+                                            <span class="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-800" title="{{ $event->rejection_reason }}">
+                                                {{ $event->rejection_reason ?? 'odmietnutý' }}
+                                            </span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="7" class="px-4 py-6 text-center text-sm text-slate-500">Zatiaľ neprišiel žiadny hlas.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

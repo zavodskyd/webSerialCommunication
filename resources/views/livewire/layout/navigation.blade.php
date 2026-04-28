@@ -38,10 +38,6 @@ new class extends Component
                     </x-slot>
 
                     <x-slot name="content">
-                        <x-dropdown-link :href="route('test')" wire:navigate>
-                            {{ __('Test') }}
-                        </x-dropdown-link>
-
                         <x-dropdown-link :href="route('import.devices')" wire:navigate>
                             {{ __('Import CSV') }}
                         </x-dropdown-link>
@@ -81,10 +77,6 @@ new class extends Component
             </div>
 
             <div class="mt-3 space-y-1">
-                <x-responsive-nav-link :href="route('test')" wire:navigate>
-                    {{ __('Test') }}
-                </x-responsive-nav-link>
-
                 <x-responsive-nav-link :href="route('import.devices')" wire:navigate>
                     {{ __('Import CSV') }}
                 </x-responsive-nav-link>

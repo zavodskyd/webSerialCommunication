@@ -393,7 +393,9 @@ const spawnSerialHelper = () => {
         arch: process.arch,
     });
 
-    const helperScript = path.join(app.getAppPath(), 'serial-helper.js');
+    // .cjs extension forces CommonJS even though package.json has "type": "module".
+    // Without this, Node treats the file as ESM and `require()` throws on first line.
+    const helperScript = path.join(app.getAppPath(), 'serial-helper.cjs');
 
     if (!existsSync(helperScript)) {
         debugLog('helper script not found at', {helperScript});

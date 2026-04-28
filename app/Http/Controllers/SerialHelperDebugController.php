@@ -20,10 +20,10 @@ class SerialHelperDebugController extends Controller
     public function __invoke(): View
     {
         $candidates = [
-            base_path('nativephp/electron/serial-helper.js'),
-            base_path('../app/serial-helper.js'),
-            base_path('../../app/serial-helper.js'),
-            base_path('serial-helper.js'),
+            base_path('nativephp/electron/serial-helper.cjs'),
+            base_path('../app/serial-helper.cjs'),
+            base_path('../../app/serial-helper.cjs'),
+            base_path('serial-helper.cjs'),
         ];
 
         $candidateProbe = array_map(fn (string $p) => [

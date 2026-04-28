@@ -16,7 +16,7 @@ Riešenie: sériový reader teraz beží ako samostatný Node proces v Electron 
   - `web-serial` (default) — pôvodná Web Serial implementácia, zachovaná pre rollback.
   - `node-helper` — nový tok cez Node serial-helper.
 - `node-helper` cesta:
-  - Helper skript je **`nativephp/electron/serial-helper.js`** (vnútri NativePHP electron balíka, **nie** mimo neho ako samostatný npm projekt).
+  - Helper skript je **`nativephp/electron/serial-helper.cjs`** (vnútri NativePHP electron balíka, **nie** mimo neho ako samostatný npm projekt). Prípona `.cjs` je nutná lebo `nativephp/electron/package.json` má `"type": "module"` — bez nej Node load-uje súbor ako ESM a `require()` padne.
   - Závislosť `serialport` je v `nativephp/electron/package.json`. Pri `php artisan native:build win x64` ju **electron-builder automaticky rebuilduje s Win prebuilt binárkami** — žiadny `npm install` na cieľovej Win mašine.
   - Helper sa spúšťa cez NativePHP `ChildProcess::node()` v `NativeAppServiceProvider::boot()`.
   - Helper číta sériový port pomocou npm `serialport` knižnice.

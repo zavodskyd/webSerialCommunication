@@ -235,6 +235,14 @@ class VotingConsole extends Component
         $this->remainingSeconds = max($remainingSeconds, 0);
         $this->persistRuntimeState();
         $this->dispatchConsoleState();
+
+        // Skip the Blade re-render — the live timer is driven by JS via
+        // [data-remaining-time], the server-side value only needs to survive
+        // a refresh. A full re-render every 5s morphs the buttons back to
+        // their hardcoded `disabled` state and forces JS to re-sync, which
+        // both flickers the UI and (more importantly) was masking a vote-flush
+        // race in startQuestionFromFrontend.
+        $this->skipRender();
     }
 
     /**

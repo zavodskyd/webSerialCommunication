@@ -3,6 +3,7 @@
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\Internal\SerialControlController;
 use App\Http\Controllers\Internal\SerialFrameController;
+use App\Http\Controllers\SerialHelperDebugController;
 use App\Http\Controllers\VoteEventsExportController;
 use App\Http\Controllers\VotingExportController;
 use App\Http\Controllers\VotingLogoController;
@@ -16,6 +17,9 @@ Route::redirect('/', '/votings');
 
 Route::view('test', 'test')
     ->name('test');
+
+Route::get('/debug/serial-helper', SerialHelperDebugController::class)
+    ->name('debug.serial-helper');
 
 Route::post('/import-devices', [DeviceController::class, 'import'])->name('import.devices');
 Route::get('/import-devices', [DeviceController::class, 'index'])->name('import.devices');

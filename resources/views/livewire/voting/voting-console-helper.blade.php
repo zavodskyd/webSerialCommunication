@@ -48,8 +48,11 @@
         </div>
 
         @if ($helperHealthy === false)
-            <div class="rounded-2xl border border-rose-300 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-900">
-                ⚠ Sériový helper nereaguje. Hlasy nemusia byť zaznamenávané. Skontrolujte log <code class="font-mono">storage/logs/serial-helper.log</code>.
+            <div class="flex flex-wrap items-center gap-3 rounded-2xl border border-rose-300 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-900">
+                <span>⚠ Sériový helper nereaguje. Hlasy nemusia byť zaznamenávané.</span>
+                <a href="{{ route('debug.serial-helper') }}" target="_blank" rel="noopener" class="rounded-xl bg-rose-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-800">
+                    Otvoriť diagnostiku →
+                </a>
             </div>
         @elseif ($helperQueuedFrames > 0)
             <div class="rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-900">

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Support\NativeDatabaseBootstrapper;
+use App\Support\SerialHelperDiagnostics;
 use App\Support\SerialHelperTokens;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
@@ -18,6 +19,19 @@ class NativeAppServiceProvider implements ProvidesPhpIni
      */
     public function boot(): void
     {
+        // Force log channel to 'single' on NativePHP runtime — the default
+        // 'stack'/'daily' setup can fail silently inside a packaged .exe
+        // (no laravel.log appears in Dušan's Win build). 'single' is the
+        // simplest path: one append-only file with a deterministic name.
+        config(['logging.default' => 'single']);
+
+        Log::info('NativeAppServiceProvider::boot', [
+            'serial_driver' => config('serial.driver'),
+            'base_path' => base_path(),
+            'storage_path' => storage_path(),
+            'app_url' => config('app.url'),
+        ]);
+
         // Run pending migrations BEFORE seed so schema additions land on
         // returning users (whose DB already has data from a prior build, so
         // seed-from-bundled is skipped). Without this, columns/tables added
@@ -63,30 +77,33 @@ class NativeAppServiceProvider implements ProvidesPhpIni
     {
         Event::listen('Native\\Desktop\\Events\\ChildProcess\\MessageReceived', function ($event) {
             if (($event->alias ?? null) === 'serial-helper') {
-                Log::info('serial-helper stdout', ['data' => $event->data ?? '']);
+                $data = $event->data ?? '';
+                Log::info('serial-helper stdout', ['data' => $data]);
+                SerialHelperDiagnostics::record('info', 'helper stdout', ['data' => $data]);
             }
         });
 
         Event::listen('Native\\Desktop\\Events\\ChildProcess\\ErrorReceived', function ($event) {
             if (($event->alias ?? null) === 'serial-helper') {
-                Log::error('serial-helper stderr', ['data' => $event->data ?? '']);
+                $data = $event->data ?? '';
+                Log::error('serial-helper stderr', ['data' => $data]);
+                SerialHelperDiagnostics::record('error', 'helper stderr', ['data' => $data]);
             }
         });
 
         Event::listen('Native\\Desktop\\Events\\ChildProcess\\ProcessExited', function ($event) {
             if (($event->alias ?? null) === 'serial-helper') {
-                Log::error('serial-helper process exited', [
-                    'code' => $event->code ?? null,
-                    'signal' => $event->signal ?? null,
-                ]);
+                $payload = ['code' => $event->code ?? null, 'signal' => $event->signal ?? null];
+                Log::error('serial-helper process exited', $payload);
+                SerialHelperDiagnostics::record('error', 'helper exited', $payload);
             }
         });
 
         Event::listen('Native\\Desktop\\Events\\ChildProcess\\StartupError', function ($event) {
             if (($event->alias ?? null) === 'serial-helper') {
-                Log::error('serial-helper startup error', [
-                    'error' => $event->error ?? 'unknown',
-                ]);
+                $payload = ['error' => $event->error ?? 'unknown'];
+                Log::error('serial-helper startup error', $payload);
+                SerialHelperDiagnostics::record('error', 'helper startup error', $payload);
             }
         });
     }
@@ -94,9 +111,9 @@ class NativeAppServiceProvider implements ProvidesPhpIni
     private function bootSerialHelperIfEnabled(): void
     {
         if (config('serial.driver') !== 'node-helper') {
-            Log::info('serial-helper: driver is not node-helper, skipping spawn', [
-                'driver' => config('serial.driver'),
-            ]);
+            $msg = 'driver is not node-helper, skipping spawn';
+            Log::info('serial-helper: '.$msg, ['driver' => config('serial.driver')]);
+            SerialHelperDiagnostics::record('info', $msg, ['driver' => config('serial.driver')]);
 
             return;
         }
@@ -105,11 +122,19 @@ class NativeAppServiceProvider implements ProvidesPhpIni
         // read it on first launch.
         $token = SerialHelperTokens::current();
 
+        $candidates = $this->serialHelperScriptCandidates();
+        $candidatesProbe = array_map(fn (string $p) => ['path' => $p, 'exists' => is_file($p)], $candidates);
+        SerialHelperDiagnostics::record('info', 'script candidate probe', ['candidates' => $candidatesProbe]);
+
         $scriptPath = $this->resolveSerialHelperScript();
 
         if ($scriptPath === null) {
             Log::error('serial-helper: helper script not found at any candidate path', [
-                'candidates' => $this->serialHelperScriptCandidates(),
+                'candidates' => $candidates,
+                'base_path' => base_path(),
+            ]);
+            SerialHelperDiagnostics::record('error', 'helper script not found', [
+                'candidates' => $candidatesProbe,
                 'base_path' => base_path(),
             ]);
 
@@ -117,6 +142,10 @@ class NativeAppServiceProvider implements ProvidesPhpIni
         }
 
         Log::info('serial-helper: spawning child process', [
+            'script' => $scriptPath,
+            'laravel_base' => base_path(),
+        ]);
+        SerialHelperDiagnostics::record('info', 'spawning child process', [
             'script' => $scriptPath,
             'laravel_base' => base_path(),
         ]);
@@ -132,8 +161,13 @@ class NativeAppServiceProvider implements ProvidesPhpIni
                 ],
                 persistent: true,
             );
+            SerialHelperDiagnostics::record('info', 'ChildProcess::node call returned without exception');
         } catch (\Throwable $e) {
             Log::error('serial-helper: ChildProcess::node failed', [
+                'message' => $e->getMessage(),
+                'class' => $e::class,
+            ]);
+            SerialHelperDiagnostics::record('error', 'ChildProcess::node threw', [
                 'message' => $e->getMessage(),
                 'class' => $e::class,
             ]);

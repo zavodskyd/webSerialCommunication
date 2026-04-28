@@ -62,6 +62,29 @@ test('start returns immediate console state for native serial runtime', function
     ]);
 });
 
+test('stale native vote requests are accepted once the question is live in runtime state', function () {
+    [, $voting, , $device] = createConsoleFixture();
+
+    $staleComponent = app(VotingConsole::class);
+    $staleComponent->mount($voting);
+
+    $starterComponent = app(VotingConsole::class);
+    $starterComponent->mount($voting);
+    $starterComponent->startQuestion();
+
+    expect($staleComponent->collectorEnabled)->toBeFalse();
+
+    $response = $staleComponent->recordVoteFromCode($device->code_a);
+
+    expect($response)->toMatchArray([
+        'accepted' => true,
+        'lastMatchedDeviceNumber' => '001',
+        'lastButtonName' => 'A',
+    ]);
+    expect(Vote::query()->count())->toBe(1);
+    expect(Vote::query()->first()->option_key)->toBe('A');
+});
+
 test('native serial runtime separates connection from transceiver collection', function () {
     $consoleView = file_get_contents(resource_path('views/livewire/voting/voting-console.blade.php'));
 

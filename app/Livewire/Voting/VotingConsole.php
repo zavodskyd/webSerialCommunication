@@ -242,7 +242,9 @@ class VotingConsole extends Component
      */
     public function recordVoteFromCode(string $code): array
     {
-        if (! $this->collectorEnabled) {
+        $question = $this->currentQuestion();
+
+        if (! $this->collectorEnabled && ! $this->isQuestionCollectingVotes($question)) {
             $this->skipRender();
 
             return [
@@ -250,11 +252,10 @@ class VotingConsole extends Component
                 'message' => 'Hlasovanie momentálne neprijíma hlasy.',
                 'lastMatchedDeviceNumber' => $this->lastMatchedDeviceNumber,
                 'lastButtonName' => $this->lastButtonName,
-                'results' => $this->currentQuestion()->summarizedResults(),
+                'results' => $question->summarizedResults(),
             ];
         }
 
-        $question = $this->currentQuestion();
         $device = $this->resolveDeviceByCode($code);
 
         if (! $device) {
@@ -410,6 +411,15 @@ class VotingConsole extends Component
     private function isQuestionActive(): bool
     {
         return $this->collectorEnabled || $this->timerRunning || $this->resultsVisible;
+    }
+
+    private function isQuestionCollectingVotes(VotingQuestion $question): bool
+    {
+        $this->voting->refresh();
+        $question->refresh();
+
+        return $this->voting->runtime_collector_enabled
+            && in_array($question->status, ['live', 'paused'], true);
     }
 
     private function advanceToNextQuestion(): void

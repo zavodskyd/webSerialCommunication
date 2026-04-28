@@ -1,20 +1,20 @@
 use eframe::egui;
 
 use crate::{
-    serial_worker::{self, SerialCommand},
+    serial_worker::{self, SerialCommand, SerialPortChoice},
     AgentContext,
 };
 
 pub struct SerialAgentApp {
     context: AgentContext,
-    ports: Vec<String>,
+    ports: Vec<SerialPortChoice>,
     selected_port: Option<String>,
 }
 
 impl SerialAgentApp {
     pub fn new(context: AgentContext) -> Self {
         let ports = serial_worker::available_ports();
-        let selected_port = ports.first().cloned();
+        let selected_port = ports.first().map(|port| port.port_name.clone());
 
         Self {
             context,
@@ -29,9 +29,11 @@ impl SerialAgentApp {
         if self
             .selected_port
             .as_ref()
-            .map_or(true, |selected| !self.ports.contains(selected))
+            .map_or(true, |selected| {
+                !self.ports.iter().any(|port| port.port_name == *selected)
+            })
         {
-            self.selected_port = self.ports.first().cloned();
+            self.selected_port = self.ports.first().map(|port| port.port_name.clone());
         }
     }
 
@@ -155,7 +157,13 @@ impl eframe::App for SerialAgentApp {
 
                 let selected_text = self
                     .selected_port
-                    .clone()
+                    .as_ref()
+                    .and_then(|selected| {
+                        self.ports
+                            .iter()
+                            .find(|port| port.port_name == *selected)
+                            .map(|port| port.label.clone())
+                    })
                     .unwrap_or_else(|| "No serial ports found".to_string());
 
                 egui::ComboBox::from_label("Serial device")
@@ -164,8 +172,8 @@ impl eframe::App for SerialAgentApp {
                         for port in &self.ports {
                             ui.selectable_value(
                                 &mut self.selected_port,
-                                Some(port.clone()),
-                                port,
+                                Some(port.port_name.clone()),
+                                &port.label,
                             );
                         }
                     });

@@ -7,7 +7,7 @@ use std::{
 
 use chrono::Utc;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use serialport::SerialPort;
+use serialport::{SerialPort, SerialPortType};
 use uuid::Uuid;
 
 use crate::{
@@ -29,9 +29,52 @@ pub enum SerialCommand {
     Health,
 }
 
-pub fn available_ports() -> Vec<String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SerialPortChoice {
+    pub port_name: String,
+    pub label: String,
+}
+
+pub fn available_ports() -> Vec<SerialPortChoice> {
     match serialport::available_ports() {
-        Ok(ports) => ports.into_iter().map(|port| port.port_name).collect(),
+        Ok(ports) => ports
+            .into_iter()
+            .map(|port| {
+                let label = match &port.port_type {
+                    SerialPortType::UsbPort(info) => {
+                        let product = info
+                            .product
+                            .as_deref()
+                            .or(info.manufacturer.as_deref())
+                            .unwrap_or("USB serial device");
+                        let serial = info
+                            .serial_number
+                            .as_deref()
+                            .map(|value| format!(" SN {value}"))
+                            .unwrap_or_default();
+
+                        format!(
+                            "{} - {} (VID {:04X}, PID {:04X}{})",
+                            port.port_name, product, info.vid, info.pid, serial
+                        )
+                    }
+                    SerialPortType::BluetoothPort => {
+                        format!("{} - Bluetooth serial device", port.port_name)
+                    }
+                    SerialPortType::PciPort => {
+                        format!("{} - PCI serial device", port.port_name)
+                    }
+                    SerialPortType::Unknown => {
+                        format!("{} - Serial device", port.port_name)
+                    }
+                };
+
+                SerialPortChoice {
+                    port_name: port.port_name,
+                    label,
+                }
+            })
+            .collect(),
         Err(error) => {
             tracing::warn!(%error, "failed to list serial ports");
             Vec::new()
@@ -252,5 +295,16 @@ mod tests {
 
         assert_eq!(frames, vec!["2081a1", "2091b1"]);
         assert_eq!(incoming, vec![0xff]);
+    }
+
+    #[test]
+    fn serial_port_choice_keeps_port_name_separate_from_label() {
+        let choice = SerialPortChoice {
+            port_name: "COM3".to_string(),
+            label: "COM3 - USB serial device (VID 10C4, PID EA60)".to_string(),
+        };
+
+        assert_eq!(choice.port_name, "COM3");
+        assert!(choice.label.contains("USB serial device"));
     }
 }

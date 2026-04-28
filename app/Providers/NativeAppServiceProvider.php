@@ -16,6 +16,11 @@ class NativeAppServiceProvider implements ProvidesPhpIni
      */
     public function boot(): void
     {
+        // Run pending migrations BEFORE seed so schema additions land on
+        // returning users (whose DB already has data from a prior build, so
+        // seed-from-bundled is skipped). Without this, columns/tables added
+        // after the user's first install never appear and queries 500.
+        app(NativeDatabaseBootstrapper::class)->runPendingMigrations();
         app(NativeDatabaseBootstrapper::class)->seedFromBundledDatabaseIfEmpty();
 
         $this->bootSerialHelperIfEnabled();
@@ -52,8 +57,12 @@ class NativeAppServiceProvider implements ProvidesPhpIni
         // read it on first launch.
         $token = SerialHelperTokens::current();
 
+        // Helper script lives inside nativephp/electron/ so its native deps
+        // (serialport) are bundled by electron-builder into the .exe — no
+        // npm install on the target Windows machine. The script's require()
+        // resolves serialport from nativephp/electron/node_modules/.
         ChildProcess::node(
-            cmd: [base_path('electron/serial-helper/index.js')],
+            cmd: [base_path('nativephp/electron/serial-helper.js')],
             alias: 'serial-helper',
             env: [
                 'LARAVEL_BASE' => base_path(),

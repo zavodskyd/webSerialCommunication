@@ -9,10 +9,9 @@ test('native app opens the main window maximized but not fullscreen', function (
     $nativeWindow = new NativeWindow('main');
     $windowManager = Window::fake()->alwaysReturnWindows([$nativeWindow]);
     $providerSource = file_get_contents(app_path('Providers/NativeAppServiceProvider.php'));
-    $this->mock(NativeDatabaseBootstrapper::class)
-        ->shouldReceive('seedFromBundledDatabaseIfEmpty')
-        ->once()
-        ->andReturnFalse();
+    $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
+    $bootstrapper->shouldReceive('runPendingMigrations')->once()->andReturnFalse();
+    $bootstrapper->shouldReceive('seedFromBundledDatabaseIfEmpty')->once()->andReturnFalse();
 
     app(NativeAppServiceProvider::class)->boot();
 

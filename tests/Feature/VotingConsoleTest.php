@@ -81,7 +81,7 @@ test('events log toggle flips the visible flag', function () {
 });
 
 test('node helper buffers frames to disk when laravel POST fails', function () {
-    $helper = file_get_contents(base_path('electron/serial-helper/index.js'));
+    $helper = file_get_contents(base_path('nativephp/electron/serial-helper.js'));
 
     // The retry buffer is the conference-day insurance: if Laravel is briefly
     // unreachable, frames must not be dropped silently.

@@ -16,13 +16,24 @@ Riešenie: sériový reader teraz beží ako samostatný Node proces v Electron 
   - `web-serial` (default) — pôvodná Web Serial implementácia, zachovaná pre rollback.
   - `node-helper` — nový tok cez Node serial-helper.
 - `node-helper` cesta:
+  - Helper skript je **`nativephp/electron/serial-helper.js`** (vnútri NativePHP electron balíka, **nie** mimo neho ako samostatný npm projekt).
+  - Závislosť `serialport` je v `nativephp/electron/package.json`. Pri `php artisan native:build win x64` ju **electron-builder automaticky rebuilduje s Win prebuilt binárkami** — žiadny `npm install` na cieľovej Win mašine.
   - Helper sa spúšťa cez NativePHP `ChildProcess::node()` v `NativeAppServiceProvider::boot()`.
   - Helper číta sériový port pomocou npm `serialport` knižnice.
   - Každý 3-byte frame postuje na `POST /internal/serial-frame` (auth cez `X-Internal-Token` bearer + localhost-only middleware).
+  - Pri zlyhaní POSTu (Laravel chvíľu nedostupný) sa frame zaradí do disk JSONL fronty `storage/framework/serial-helper-queue.jsonl` a re-tryuje sa každých 5s. Žiadny hlas sa nestratí pri momentálnom výpadku.
   - Laravel rieši hlas cez `App\Services\Voting\VoteRecorder` (rovnaký service ako Livewire path).
   - Operátorská konzola používa `wire:poll.500ms="liveTick"` na refresh — žiadny JS state.
 
+**Build flow pre `node-helper` driver:**
+1. Pridať/zmeniť závislosť v `nativephp/electron/package.json` na Macu → `cd nativephp/electron && npm install` raz, len keď sa zmeni package.json.
+2. `SERIAL_DRIVER=node-helper` v Laravelovom `.env` v root-e repa.
+3. `php artisan native:build win x64` — electron-builder zbalí Win binárky `serialport` do .exe.
+4. Inštalácia .exe na Win — nič manuálne, helper sa spustí pri štarte appky cez NativePHP.
+
 **Nepresúvať** sériovú logiku späť do Blade view ani do JS. Bola to bolesť, ktorú nechceme zopakovať.
+
+**Nepresúvať** helper skript späť mimo `nativephp/electron/`. Mal som ho v `electron/serial-helper/` ako samostatný npm projekt — vyžadovalo to `npm install` na cieli, čo na zabalenom .exe nie je možné.
 
 ## Permissive importy
 

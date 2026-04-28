@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
 class NativeDatabaseBootstrapper
@@ -21,6 +22,27 @@ class NativeDatabaseBootstrapper
         'voting_attendees',
         'votes',
     ];
+
+    /**
+     * Apply pending Laravel migrations on the user's local SQLite. MUST run on
+     * every NativePHP boot — not only on first launch — because a returning
+     * user's DB already contains data from a prior build, so seedFromBundled…
+     * skips it. Without this, schema additions (e.g. vote_events) are missing
+     * after an update and queries blow up with 500s.
+     */
+    public function runPendingMigrations(): bool
+    {
+        if (! config('nativephp-internal.running')) {
+            return false;
+        }
+
+        Artisan::call('migrate', [
+            '--force' => true,
+            '--no-interaction' => true,
+        ]);
+
+        return true;
+    }
 
     public function seedFromBundledDatabaseIfEmpty(?string $sourcePath = null): bool
     {

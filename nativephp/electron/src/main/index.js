@@ -472,7 +472,21 @@ const spawnSerialHelper = () => {
 };
 
 app.whenReady().then(configureWebSerial);
-app.whenReady().then(spawnSerialHelper);
+
+// spawnSerialHelper() disabled. Reasons (from Dušan's 2026-04-28 testing):
+//   1. serialport native binary has Win32 ABI mismatch ("not a valid Win32
+//      application"). electron-builder didn't rebuild it for Win during
+//      cross-build from Mac. Fixing it requires either a real Win build
+//      machine or a serious electron-builder/CI redesign.
+//   2. Even when the helper crash-loops it keeps the diagnostic banner
+//      flashing in the operator console and adds load on top of an already
+//      sluggish packaged app (page-link unresponsive, force-reload required).
+//
+// Web-serial path (SERIAL_DRIVER=web-serial, default) is the production
+// flow and works. The helper architecture stays in the codebase as a
+// future option but is not auto-spawned. To re-enable, uncomment the
+// next line and ensure the Win serialport prebuild is correctly bundled.
+// app.whenReady().then(spawnSerialHelper);
 
 app.on('window-all-closed', () => {
     app.quit();

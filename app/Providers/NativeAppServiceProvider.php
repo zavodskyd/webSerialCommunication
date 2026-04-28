@@ -16,6 +16,11 @@ class NativeAppServiceProvider implements ProvidesPhpIni
      */
     public function boot(): void
     {
+        // Run pending migrations BEFORE seed so schema additions land on
+        // returning users (whose DB already has data from a prior build, so
+        // seed-from-bundled is skipped). Without this, columns/tables added
+        // after the user's first install never appear and queries 500.
+        app(NativeDatabaseBootstrapper::class)->runPendingMigrations();
         app(NativeDatabaseBootstrapper::class)->seedFromBundledDatabaseIfEmpty();
 
         $this->bootSerialHelperIfEnabled();

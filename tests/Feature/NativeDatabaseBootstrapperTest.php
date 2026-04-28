@@ -6,6 +6,27 @@ use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
+test('runPendingMigrations short-circuits when not in nativephp runtime', function () {
+    config(['nativephp-internal.running' => false]);
+
+    $bootstrapper = new NativeDatabaseBootstrapper;
+
+    expect($bootstrapper->runPendingMigrations())->toBeFalse();
+});
+
+test('runPendingMigrations invokes artisan migrate when nativephp is running', function () {
+    config(['nativephp-internal.running' => true]);
+
+    Artisan::shouldReceive('call')
+        ->once()
+        ->with('migrate', ['--force' => true, '--no-interaction' => true])
+        ->andReturn(0);
+
+    $bootstrapper = new NativeDatabaseBootstrapper;
+
+    expect($bootstrapper->runPendingMigrations())->toBeTrue();
+});
+
 test('native install migrations run against the native sqlite database file', function () {
     $repository = Env::getRepository();
     $nativeDatabasePath = tempnam(sys_get_temp_dir(), 'native-db-');

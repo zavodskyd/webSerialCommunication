@@ -30,10 +30,50 @@
  *   node electron/serial-helper/index.js
  */
 
-const express = require('express');
+// Eager diagnostic stamp so we can tell — purely from the Laravel log via
+// NativePHP's MessageReceived event piping — that the helper file was at
+// least loaded by Node. If we never see this line in laravel.log, the
+// problem is upstream (script path wrong, utilityProcess.fork failed).
+process.stdout.write(JSON.stringify({
+    level: 'info',
+    message: 'serial-helper boot start',
+    pid: process.pid,
+    cwd: process.cwd(),
+    laravel_base: process.env.LARAVEL_BASE || null,
+    ts: new Date().toISOString(),
+}) + '\n');
+
 const fs = require('fs');
 const path = require('path');
-const { SerialPort } = require('serialport');
+
+let express;
+let SerialPort;
+
+try {
+    express = require('express');
+} catch (e) {
+    process.stdout.write(JSON.stringify({
+        level: 'fatal',
+        message: 'failed to require(express)',
+        error: e.message,
+        stack: e.stack,
+        ts: new Date().toISOString(),
+    }) + '\n');
+    process.exit(1);
+}
+
+try {
+    SerialPort = require('serialport').SerialPort;
+} catch (e) {
+    process.stdout.write(JSON.stringify({
+        level: 'fatal',
+        message: 'failed to require(serialport) — native binary missing or wrong ABI?',
+        error: e.message,
+        stack: e.stack,
+        ts: new Date().toISOString(),
+    }) + '\n');
+    process.exit(1);
+}
 
 // ---------- config ----------------------------------------------------------
 

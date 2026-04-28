@@ -361,11 +361,15 @@ const configureWebSerial = () => {
 // native binary lives. Doing this from PHP cannot work in the packaged
 // .exe, regardless of how clever the PHP-side path resolution is.
 const spawnSerialHelper = () => {
-    // appPath here is `${buildPath}/app` (line 16) — the Laravel app root,
-    // i.e. what PHP base_path() returns. Helper writes its token+port files
-    // into LARAVEL_BASE/storage/framework so Laravel can read them.
-    const laravelBase = appPath;
-    const debugLogPath = path.join(laravelBase, 'storage', 'logs', 'serial-helper-spawn.log');
+    // CRITICAL: in packaged NativePHP, Laravel's storage_path() resolves to
+    // app.getPath('userData')/storage (NOT base_path/storage). The install
+    // dir under Programs/laravel/resources/build/app/ is read-only on Win.
+    // Helper must write its token/port/log files into the same userData
+    // tree Laravel reads from — otherwise PHP sees an empty storage and
+    // helperPort() always returns null.
+    const userDataStoragePath = path.join(app.getPath('userData'), 'storage');
+    const laravelBase = appPath; // base_path() — read-only install dir
+    const debugLogPath = path.join(userDataStoragePath, 'logs', 'serial-helper-spawn.log');
 
     const debugLog = (msg, extra) => {
         const line = `${new Date().toISOString()} ${msg}` + (extra !== undefined ? ' ' + JSON.stringify(extra) : '') + '\n';
@@ -381,6 +385,8 @@ const spawnSerialHelper = () => {
     debugLog('spawnSerialHelper invoked', {
         appPath: app.getAppPath(),
         laravelBase,
+        userDataStoragePath,
+        userData: app.getPath('userData'),
         execPath: process.execPath,
         resourcesPath: process.resourcesPath,
         platform: process.platform,
@@ -403,7 +409,7 @@ const spawnSerialHelper = () => {
         debugLog('helper script exists', {helperScript});
     }
 
-    const tokenPath = path.join(laravelBase, 'storage', 'framework', 'serial-helper.token');
+    const tokenPath = path.join(userDataStoragePath, 'framework', 'serial-helper.token');
     let token;
 
     if (existsSync(tokenPath)) {
@@ -426,6 +432,7 @@ const spawnSerialHelper = () => {
             stdio: 'pipe',
             env: {
                 ...process.env,
+                STORAGE_PATH: userDataStoragePath,
                 LARAVEL_BASE: laravelBase,
                 LARAVEL_URL: 'http://127.0.0.1:8101',
                 SERIAL_HELPER_TOKEN: token,

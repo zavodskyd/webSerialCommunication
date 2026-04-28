@@ -77,12 +77,19 @@ try {
 
 // ---------- config ----------------------------------------------------------
 
-const LARAVEL_BASE = process.env.LARAVEL_BASE || path.resolve(__dirname, '..', '..');
+// In packaged NativePHP/Electron Win app, Laravel's storage_path() resolves
+// to app.getPath('userData')/storage (e.g.
+// C:\Users\<User>\AppData\Roaming\hlasovanie\storage\), NOT base_path()/storage.
+// The Electron main process passes that exact path via STORAGE_PATH so the
+// helper writes its token/port/log files where Laravel actually reads from.
+const STORAGE_PATH = process.env.STORAGE_PATH
+    || (process.env.LARAVEL_BASE ? path.join(process.env.LARAVEL_BASE, 'storage') : null)
+    || path.resolve(__dirname, '..', '..', 'storage');
 const LARAVEL_URL = process.env.LARAVEL_URL || 'http://127.0.0.1:8101';
-const TOKEN_FILE = path.join(LARAVEL_BASE, 'storage', 'framework', 'serial-helper.token');
-const PORT_FILE = path.join(LARAVEL_BASE, 'storage', 'framework', 'serial-helper.port');
-const LOG_FILE = path.join(LARAVEL_BASE, 'storage', 'logs', 'serial-helper.log');
-const QUEUE_FILE = path.join(LARAVEL_BASE, 'storage', 'framework', 'serial-helper-queue.jsonl');
+const TOKEN_FILE = path.join(STORAGE_PATH, 'framework', 'serial-helper.token');
+const PORT_FILE = path.join(STORAGE_PATH, 'framework', 'serial-helper.port');
+const LOG_FILE = path.join(STORAGE_PATH, 'logs', 'serial-helper.log');
+const QUEUE_FILE = path.join(STORAGE_PATH, 'framework', 'serial-helper-queue.jsonl');
 const QUEUE_DRAIN_INTERVAL_MS = 5000;
 const QUEUE_MAX_ATTEMPTS = 50;
 

@@ -1,3 +1,90 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project: Hlasovanie (Voting)
+
+Slovak-language voting/polling system for **Qomo wireless voting devices**, built on Laravel 12 + Livewire 3 and shipped as a **NativePHP Desktop (Electron) app**. The README is outdated — treat this section as authoritative for current state.
+
+The original `/dashboard` + Laravel Breeze auth scaffold has been **removed** (`tests/Feature/AuthRemovedTest.php` enforces this). The app is now unauthenticated; the entry route redirects `/` → `/votings`. The legacy `<livewire:serial-communication />` component still exists at `resources/views/livewire/serial-communication.blade.php` but the primary product is the voting console.
+
+## Architecture
+
+### Two execution modes
+
+1. **Web (browser)** — `php artisan serve` + `npm run dev`. Web Serial API works only in Chromium-based browsers.
+2. **Desktop (NativePHP/Electron)** — `composer native:dev` runs `php artisan native:run` and `npm run dev` concurrently. Desktop is the intended production target. `app/Providers/NativeAppServiceProvider.php` opens a maximized window on boot and seeds an empty SQLite from a bundled seed DB via `App\Support\NativeDatabaseBootstrapper`.
+
+### Voting domain (the main feature)
+
+- `Voting` hasMany `VotingQuestion` hasMany `VotingOption` + `Vote`.
+- `VotingAttendee` joins a `Voting` with a `Device` and stores the per-voting `weight` (number of votes that device casts; `0` = present but cannot vote).
+- `Vote` is unique on `(voting_question_id, device_id)` — re-pressing overwrites via `updateOrCreate` in `VotingQuestion::recordVote()`. The vote stores `weight_snapshot` so later weight changes don't retroactively alter results.
+- Each question has a per-question status (`draft|live|paused|closed`) AND the parent `Voting` carries runtime state (`runtime_remaining_seconds`, `runtime_timer_running`, `runtime_collector_enabled`, `runtime_results_visible`, `current_voting_question_id`). This is so the **operator console** and **presentation view** can survive page reload / desktop relaunch and stay in sync.
+
+### Voting Livewire components (`app/Livewire/Voting/`)
+
+- `VotingIndex` — list & create votings.
+- `VotingEditor` — manage questions, options, attendees (device assignment + weight).
+- `VotingConsole` — operator's live control panel. Owns timer, collector enable/disable, "show results / advance" flow. Records votes via `recordVoteFromCode($hexCode)`.
+- `VotingPresentation` — fullscreen audience view. Subscribes to console state via Livewire dispatched event `console-state-updated`.
+
+### Serial protocol (client-side only)
+
+The serial reader logic lives **inside the Blade view**, not PHP — `resources/views/livewire/serial-communication.blade.php` and the equivalent block in `voting-console.blade.php`. It uses the Web Serial API (browser) or NativePHP's serial bridge (desktop).
+
+Hardcoded port config and init bytes (reverse-engineered from the original Qomo software, no spec exists):
+- Port: `baudRate=28800, dataBits=8, parity=none, stopBits=1, flowControl=none`
+- Init: `f400c00236`, `f500000101f5`, `f54b4e050200000601f0`
+- Start: `5b80db`, `5a80da`  •  Stop: `5b80db`
+
+Received bytes → hex string → posted to a Livewire action (`SerialCommunication::checkCode` or `VotingConsole::recordVoteFromCode`). The PHP side resolves which `Device` row owns that code and which button (`A`–`F` or `Ruka`) it represents via `Device::resolveButtonName()`.
+
+### Device model (lookup table)
+
+`devices` is a wide flat table — one row per physical voting device with seven nullable string columns `code_a`…`code_f`, `code_ruka` holding the unique hex codes for that device's buttons. Lookup is denormalized on purpose to keep the per-keystroke hot path simple. Two import paths:
+
+- CSV → `DeviceController::import` (column order: `device_number, code_a..code_f, code_ruka`).
+- External SQLite from a legacy C# voting app → `DeviceController::loadExternalDb`. Reads table `SKDP_ParentZariadenie` columns `UniqueId, A_Code…F_Code, Ruka_Code`. Uses a runtime-injected DB connection named `external` and writes the file to `storage/app/private/temp/external.sqlite` — name is fixed, so concurrent uploads collide.
+
+### NativePHP seeding
+
+`PrepareNativeSeedDatabase` (artisan `native:prepare-seed-database`) runs as a `prebuild` hook (see `config/nativephp.php`) and copies the current dev SQLite to `database/nativephp-seed.sqlite`. On first launch in the bundled desktop app, `NativeDatabaseBootstrapper::seedFromBundledDatabaseIfEmpty()` ATTACH-copies tables from that seed into the user's empty local DB. It only runs when `config('nativephp-internal.running')` is true and the application tables (`users, devices, votings, voting_questions, voting_options, voting_attendees, votes`) are empty.
+
+## Commands
+
+```bash
+# Web dev
+php artisan serve
+npm run dev
+npm run build
+
+# Desktop dev (Electron)
+composer native:dev          # runs native:run + npm run dev concurrently
+php artisan native:run        # NativePHP only
+php artisan native:prepare-seed-database   # snapshot dev DB into the bundled seed
+
+# DB
+php artisan migrate
+php artisan migrate:fresh
+
+# Tests (Pest 3, RefreshDatabase auto-applied to tests/Feature)
+php artisan test --compact
+php artisan test --compact --filter=VotingConsoleTest
+vendor/bin/pest tests/Feature/SerialCommunicationTest.php
+
+# Format (run after editing PHP)
+vendor/bin/pint --dirty --format agent
+```
+
+## Conventions specific to this project
+
+- UI strings are **Slovak** (`Hlasovanie`, `Stlačená hodnota`, `Zariadenie`). Keep that voice when adding labels.
+- Migrations use the modern Laravel 12 layout — middleware in `bootstrap/app.php`, no `app/Http/Kernel.php`, no `app/Console/Kernel.php`.
+- When changing voting runtime behavior, update both `VotingConsole` (write side) and `VotingPresentation` (read side); the contract is the `console-state-updated` event payload + the `runtime_*` columns on `votings`.
+- The serial protocol is duplicated between `serial-communication.blade.php` and `voting-console.blade.php`. If you change init bytes or parsing, update both.
+- Tests prefer feature tests + factories over unit tests — see `tests/Feature/VotingConsoleTest.php` for the canonical pattern (Livewire `Livewire::test(Component::class, [...])`).
+
 <laravel-boost-guidelines>
 === foundation rules ===
 

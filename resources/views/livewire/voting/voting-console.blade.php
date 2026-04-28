@@ -189,7 +189,12 @@
     </div>
 
     @if ($resultsVisible)
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4">
+        <div
+            class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4"
+            x-data
+            @keydown.escape.window="$wire.closeResultsAndAdvance()"
+            @click.self="$wire.closeResultsAndAdvance()"
+        >
             <div class="w-full max-w-4xl rounded-[2rem] bg-white p-8 shadow-2xl">
                 <div class="flex items-start justify-between gap-6">
                     <div>
@@ -590,7 +595,19 @@
         try {
             state.isReading = true;
             state.readerStopPromise = readData();
-            await delay(50);
+
+            // Drain any bytes the device emitted between the previous stop and now
+            // (button presses while the result modal was open, echoed stop frames, etc.).
+            // Without this the 3-byte frame parser realigns one byte at a time and can
+            // swallow the first valid press of the next question.
+            await delay(150);
+            state.incomingBytes = [];
+
+            // Reset the transmitter to a known state on every question start, not just
+            // on the initial connect — otherwise consecutive stop/start cycles can leave
+            // the device in a half-state and the first frame after start is lost.
+            await initializeDevice();
+
             await sendHexCommand('5b80db', 3);
             await sendHexCommand('5a80da', 3);
         } finally {
@@ -799,7 +816,7 @@
             try {
                 await state.writer.close();
             } catch (error) {
-                console.log('Writer already closed');
+                console.error('Failed to close serial writer:', error);
             }
             state.writer = null;
         }
@@ -808,7 +825,7 @@
             try {
                 await state.serialPort.close();
             } catch (error) {
-                console.log('Serial port already closed');
+                console.error('Failed to close serial port:', error);
             }
             state.serialPort = null;
         }

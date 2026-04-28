@@ -52,8 +52,12 @@ class NativeAppServiceProvider implements ProvidesPhpIni
         // read it on first launch.
         $token = SerialHelperTokens::current();
 
+        // Helper script lives inside nativephp/electron/ so its native deps
+        // (serialport) are bundled by electron-builder into the .exe — no
+        // npm install on the target Windows machine. The script's require()
+        // resolves serialport from nativephp/electron/node_modules/.
         ChildProcess::node(
-            cmd: [base_path('electron/serial-helper/index.js')],
+            cmd: [base_path('nativephp/electron/serial-helper.js')],
             alias: 'serial-helper',
             env: [
                 'LARAVEL_BASE' => base_path(),

@@ -64,13 +64,24 @@ class DeviceController extends Controller
         }
 
         $file = $request->file('db_file');
-        $path = $file->storeAs('temp', 'external.sqlite');
+        $path = $file->storeAs('temp', uniqid('external_', true).'.sqlite');
 
         try {
             config(['database.connections.external' => [
                 'driver' => 'sqlite',
                 'database' => storage_path('app/private/'.$path),
             ]]);
+
+            $hasSourceTable = DB::connection('external')
+                ->selectOne(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'SKDP_ParentZariadenie' LIMIT 1",
+                ) !== null;
+
+            if (! $hasSourceTable) {
+                return redirect()->back()->withErrors([
+                    'db_file' => 'Externá databáza neobsahuje tabuľku SKDP_ParentZariadenie.',
+                ]);
+            }
 
             $devices = DB::connection('external')->table('SKDP_ParentZariadenie')->get();
 

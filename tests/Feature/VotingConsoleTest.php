@@ -207,7 +207,7 @@ test('native app shows all serial ports for manual usb selection', function () {
     $mainProcess = file_get_contents(base_path('nativephp/electron/src/main/index.js'));
 
     expect($mainProcess)
-        ->toContain("import {app, BrowserWindow, ipcMain, session} from 'electron'")
+        ->toContain("import {app, BrowserWindow, ipcMain, session, utilityProcess} from 'electron'")
         ->toContain("session.defaultSession.on('select-serial-port'")
         ->toContain('async (event, portList, webContents, callback)')
         ->toContain('formatSerialPortLabel')

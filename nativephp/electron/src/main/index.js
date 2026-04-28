@@ -1,7 +1,8 @@
-import {app, BrowserWindow, ipcMain, session} from 'electron'
+import {app, BrowserWindow, ipcMain, session, utilityProcess} from 'electron'
 import NativePHP from '#plugin'
 import {existsSync, readdirSync, readFileSync, statSync, writeFileSync} from 'fs'
 import path from 'path'
+import crypto from 'crypto'
 
 // Inherit User's PATH in Process & ChildProcess
 import fixPath from 'fix-path';
@@ -351,7 +352,79 @@ const configureWebSerial = () => {
     });
 };
 
+// Spawn the Node serial-helper from Electron main, NOT from PHP. PHP's
+// base_path() resolves to resources/build/app/ (Laravel) which doesn't
+// contain serial-helper.js — the script lives next to package.json under
+// Electron resources (resources/app/). Only Electron knows that path
+// reliably (via app.getAppPath()), and only Electron's utilityProcess
+// fork has access to the Electron-bundled node_modules where serialport's
+// native binary lives. Doing this from PHP cannot work in the packaged
+// .exe, regardless of how clever the PHP-side path resolution is.
+const spawnSerialHelper = () => {
+    const helperScript = path.join(app.getAppPath(), 'serial-helper.js');
+
+    if (!existsSync(helperScript)) {
+        console.error('[serial-helper] script not found at', helperScript);
+
+        return;
+    }
+
+    // appPath here is `${buildPath}/app` (line 16) — the Laravel app root,
+    // i.e. what PHP base_path() returns. Helper writes its token+port files
+    // into LARAVEL_BASE/storage/framework so Laravel can read them.
+    const laravelBase = appPath;
+
+    // The bearer token — generate once, write to disk so Laravel and the
+    // helper share the same value. Using a deterministic per-install token
+    // would be simpler but writing on first boot keeps SerialHelperTokens
+    // PHP behaviour intact.
+    const tokenPath = path.join(laravelBase, 'storage', 'framework', 'serial-helper.token');
+    let token;
+
+    if (existsSync(tokenPath)) {
+        token = readFileSync(tokenPath, 'utf8').trim();
+    } else {
+        token = crypto.randomBytes(32).toString('hex');
+        try {
+            writeFileSync(tokenPath, token);
+        } catch (e) {
+            console.error('[serial-helper] failed to write token file', e.message);
+        }
+    }
+
+    console.log('[serial-helper] forking', helperScript, 'with LARAVEL_BASE=', laravelBase);
+
+    const proc = utilityProcess.fork(helperScript, [], {
+        stdio: 'pipe',
+        env: {
+            ...process.env,
+            LARAVEL_BASE: laravelBase,
+            LARAVEL_URL: 'http://127.0.0.1:8101',
+            SERIAL_HELPER_TOKEN: token,
+        },
+    });
+
+    proc.stdout?.on('data', (chunk) => {
+        process.stdout.write('[serial-helper] ' + chunk.toString());
+    });
+    proc.stderr?.on('data', (chunk) => {
+        process.stderr.write('[serial-helper] ' + chunk.toString());
+    });
+    proc.on('exit', (code) => {
+        console.error('[serial-helper] exited with code', code);
+    });
+
+    app.once('before-quit', () => {
+        try {
+            proc.kill();
+        } catch {
+            // ignore
+        }
+    });
+};
+
 app.whenReady().then(configureWebSerial);
+app.whenReady().then(spawnSerialHelper);
 
 app.on('window-all-closed', () => {
     app.quit();

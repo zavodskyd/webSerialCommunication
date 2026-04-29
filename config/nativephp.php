@@ -87,6 +87,7 @@ return [
         'temp',
         'content',
         'node_modules',
+        'serial-agent',
         '*/tests',
     ],
 

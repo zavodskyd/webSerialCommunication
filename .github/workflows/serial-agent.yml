@@ -48,7 +48,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup PHP 8.3
         uses: shivammathur/setup-php@v2
@@ -59,7 +59,7 @@ jobs:
           tools: composer:v2
 
       - name: Setup Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
@@ -75,7 +75,7 @@ jobs:
         run: echo "dir=$(composer config cache-files-dir)" >> $env:GITHUB_OUTPUT
 
       - name: Cache composer dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: ${{ runner.os }}-php-8.3-composer-${{ hashFiles('**/composer.lock') }}
@@ -88,7 +88,7 @@ jobs:
           workspaces: serial-agent
 
       - name: Install composer dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
+        run: composer install --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader
 
       - name: Install npm dependencies
         run: npm ci
@@ -105,10 +105,10 @@ jobs:
             | Set-Content .env
 
       - name: Test Rust agent
-        run: cargo test --manifest-path serial-agent/Cargo.toml
+        run: cargo test --manifest-path serial-agent/Cargo.toml --locked
 
       - name: Build Win64 executable
-        run: cargo build --manifest-path serial-agent/Cargo.toml --release --target x86_64-pc-windows-msvc
+        run: cargo build --manifest-path serial-agent/Cargo.toml --release --target x86_64-pc-windows-msvc --locked
 
       - name: Stage executable for NativePHP extras
         shell: pwsh
@@ -123,14 +123,14 @@ jobs:
         run: php artisan native:build win x64 --no-interaction
 
       - name: Upload serial-agent executable
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: serial-agent-win64
           path: extras/serial-agent/serial-agent.exe
           if-no-files-found: error
 
       - name: Upload NativePHP Windows app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nativephp-win64-with-serial-agent
           path: nativephp/electron/dist/**

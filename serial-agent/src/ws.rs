@@ -57,7 +57,7 @@ async fn handle_socket(socket: WebSocket, context: AgentContext) {
         return;
     };
 
-    match serde_json::from_str::<ClientMessage>(&raw_hello) {
+    match serde_json::from_str::<ClientMessage>(raw_hello.as_str()) {
         Ok(ClientMessage::Hello { token }) if token == *context.token => {}
         _ => {
             let _ = send_json(
@@ -110,7 +110,7 @@ async fn handle_socket(socket: WebSocket, context: AgentContext) {
                 };
 
                 if let Message::Text(text) = message {
-                    if handle_client_message(&context, &mut sender, &text).await.is_err() {
+                    if handle_client_message(&context, &mut sender, text.as_str()).await.is_err() {
                         return;
                     }
                 }
@@ -215,7 +215,7 @@ async fn send_json(
     message: &ServerMessage,
 ) -> anyhow::Result<()> {
     let payload = serde_json::to_string(message)?;
-    sender.send(Message::Text(payload)).await?;
+    sender.send(Message::text(payload)).await?;
 
     Ok(())
 }

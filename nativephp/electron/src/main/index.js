@@ -8,7 +8,8 @@ import crypto from 'crypto'
 import fixPath from 'fix-path';
 fixPath();
 
-const buildPath = path.resolve(import.meta.dirname, import.meta.env.MAIN_VITE_NATIVEPHP_BUILD_PATH);
+const nativePhpBuildPath = import.meta.env.MAIN_VITE_NATIVEPHP_BUILD_PATH ?? '../../../build';
+const buildPath = path.resolve(import.meta.dirname, nativePhpBuildPath);
 const defaultIcon = path.join(buildPath, 'icon.png')
 const certificate = path.join(buildPath, 'cacert.pem')
 

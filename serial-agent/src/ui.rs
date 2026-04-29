@@ -75,9 +75,11 @@ impl SerialAgentApp {
 }
 
 impl eframe::App for SerialAgentApp {
-    fn update(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         context.request_repaint_after(std::time::Duration::from_millis(250));
+    }
 
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let snapshot = self.context.shared.lock().ok().map(|state| {
             (
                 state.connected,
@@ -100,7 +102,7 @@ impl eframe::App for SerialAgentApp {
             last_frame_hex,
         ) = snapshot.unwrap_or((false, false, None, "State unavailable".to_string(), 0, None, None));
 
-        egui::CentralPanel::default().show(context, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Serial Agent");
             ui.label("Qomo voting transceiver gateway");
             ui.separator();

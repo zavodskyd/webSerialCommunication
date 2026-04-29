@@ -35,6 +35,42 @@ test('it records rust-agent frames into the active voting question', function ()
     expect($event->raw_hex)->toBe($device->code_a);
 });
 
+test('it routes frames to the voting with active collection', function () {
+    [$activeVoting, $device] = createSerialAgentFrameFixture();
+
+    $inactiveVoting = Voting::query()->create([
+        'name' => 'Neaktívne hlasovanie',
+        'auto_show_results' => true,
+    ]);
+
+    $inactiveQuestion = $inactiveVoting->createQuestionWithDefaults(
+        order: 1,
+        label: 'Hlasovanie 1',
+        text: 'Táto otázka nemá zbierať hlasy',
+        responseTimeSeconds: 30,
+    );
+
+    $inactiveQuestion->forceFill(['status' => 'live'])->save();
+    $inactiveVoting->forceFill([
+        'current_voting_question_id' => $inactiveQuestion->id,
+        'runtime_collector_enabled' => false,
+        'runtime_timer_running' => false,
+        'runtime_remaining_seconds' => 30,
+        'runtime_results_visible' => false,
+    ])->save();
+
+    $result = app(SerialAgentFrameHandler::class)->handle($device->code_a);
+
+    expect($result)->not->toBeNull();
+    expect($result->accepted)->toBeTrue();
+    expect(Vote::query()->count())->toBe(1);
+    expect(Vote::query()->first()->voting_question_id)->toBe($activeVoting->current_voting_question_id);
+
+    $event = VoteEvent::query()->first();
+    expect($event)->not->toBeNull();
+    expect($event->voting_id)->toBe($activeVoting->id);
+});
+
 /**
  * @return array{0: Voting, 1: Device}
  */

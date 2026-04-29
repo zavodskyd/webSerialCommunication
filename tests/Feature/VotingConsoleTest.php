@@ -73,14 +73,14 @@ test('helper driver: liveTick marks helper as unhealthy when not running', funct
     expect($component->helperQueuedFrames)->toBe(0);
 });
 
-test('rust agent driver starts and stops collection through the serial agent client', function () {
+test('rust agent driver keeps collection running while paused and stops only on finish', function () {
     config(['serial.driver' => 'rust-agent']);
 
     [, $voting] = createConsoleFixture();
 
     $client = $this->mock(SerialAgentClient::class);
     $client->shouldReceive('command')->once()->with('start')->andReturn(['ok' => true]);
-    $client->shouldReceive('command')->twice()->with('stop')->andReturn(['ok' => true]);
+    $client->shouldReceive('command')->once()->with('stop')->andReturn(['ok' => true]);
 
     $component = app(VotingConsole::class);
     $component->mount($voting);
@@ -91,6 +91,7 @@ test('rust agent driver starts and stops collection through the serial agent cli
 
     $component->pauseQuestionViaHelper();
     expect($component->timerRunning)->toBeFalse();
+    expect($component->collectorEnabled)->toBeTrue();
 
     $component->finishQuestionViaHelper();
     expect($component->collectorEnabled)->toBeFalse();
@@ -297,6 +298,26 @@ test('console persists runtime state for presentation polling', function () {
     expect($voting->runtime_timer_running)->toBeFalse();
     expect($voting->runtime_collector_enabled)->toBeTrue();
     expect($voting->runtime_results_visible)->toBeFalse();
+
+    Carbon::setTestNow();
+});
+
+test('live tick persists running timer for presentation polling', function () {
+    [, $voting] = createConsoleFixture();
+
+    Carbon::setTestNow(now()->startOfSecond());
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+    $component->startQuestion();
+
+    Carbon::setTestNow(now()->addSeconds(7));
+    $component->liveTick();
+
+    expect($component->remainingSeconds)->toBe(23);
+    expect($voting->fresh()->runtime_remaining_seconds)->toBe(23);
+    expect($voting->fresh()->runtime_timer_running)->toBeTrue();
+    expect($voting->fresh()->runtime_collector_enabled)->toBeTrue();
 
     Carbon::setTestNow();
 });

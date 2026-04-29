@@ -182,12 +182,6 @@ class VotingConsole extends Component
     public function pauseQuestionViaHelper(): void
     {
         $this->pauseQuestion();
-
-        if ($this->isRustAgentDriver()) {
-            app(SerialAgentClient::class)->command('stop');
-        } else {
-            SerialHelperClient::call('stop');
-        }
     }
 
     public function finishQuestionViaHelper(): void
@@ -229,6 +223,12 @@ class VotingConsole extends Component
             }
 
             $this->finishQuestion(0);
+
+            return;
+        }
+
+        if ($this->voting->runtime_remaining_seconds !== $this->remainingSeconds) {
+            $this->persistRuntimeState();
         }
     }
 

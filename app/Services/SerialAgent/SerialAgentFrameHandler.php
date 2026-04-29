@@ -16,7 +16,8 @@ class SerialAgentFrameHandler
     {
         $voting = Voting::query()
             ->whereNotNull('current_voting_question_id')
-            ->latest()
+            ->where('runtime_collector_enabled', true)
+            ->latest('updated_at')
             ->first();
 
         if ($voting === null) {

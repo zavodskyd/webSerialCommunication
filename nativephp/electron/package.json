@@ -14,7 +14,7 @@
         "lint": "eslint . --fix",
         "start": "electron-vite preview",
         "dev": "cross-env node php.js && electron-vite dev --watch",
-        "build": "electron-vite build",
+        "build": "npm run plugin:build && electron-vite build",
         "postinstall": "node ./node_modules/electron-builder/cli.js install-app-deps",
         "publish:all": "cross-env npm run build && cross-env node ./node_modules/electron-builder/cli.js --win --mac --linux --config electron-builder.mjs --x64 --arm64 -p always",
         "publish:win": "cross-env npm run publish:win-x64",

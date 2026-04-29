@@ -24,32 +24,34 @@
                 </div>
             </header>
 
-            <main class="flex min-h-0 flex-1 flex-col pt-8">
-                <div class="text-6xl font-light leading-tight tracking-normal text-slate-800">
+            <main class="relative min-h-0 flex-1 pt-8">
+                <div class="absolute left-0 top-[12%] max-w-5xl text-6xl font-light leading-tight tracking-normal text-slate-800">
                     {{ $voting->header_text ?: 'Hlavička hlasovania' }}
                 </div>
 
-                <div class="flex min-h-0 flex-1 flex-col justify-center pt-5">
-                    <p class="mx-auto max-w-5xl text-center text-5xl font-medium leading-tight text-slate-950">
+                <div class="absolute left-1/2 top-[40%] w-full max-w-[54rem] -translate-x-1/2">
+                    <p class="mx-auto mb-12 max-w-5xl text-center text-5xl font-medium leading-tight text-slate-950">
                         {{ $question->text }}
                     </p>
 
-                    <div class="mx-auto mt-10 w-full max-w-4xl space-y-5">
-                        @foreach ($question->options->sortBy('sort_order') as $option)
-                            <div class="flex items-center gap-7 text-5xl font-medium text-slate-950">
-                                <span class="w-20 text-right">{{ $option->key }}.</span>
-                                <span class="min-w-64">{{ $option->label }}</span>
-                                <span class="inline-flex h-14 w-24" style="background-color: {{ $option->color ?? '#cbd5e1' }}"></span>
-                            </div>
-                        @endforeach
+                    <div class="mx-auto w-full max-w-6xl">
+                        <div class="mx-auto w-fit space-y-4">
+                            @foreach ($question->options->sortBy('sort_order') as $option)
+                                <div class="flex items-center gap-14 text-5xl font-medium text-slate-950">
+                                    <span class="w-20 text-left">{{ $option->key }}.</span>
+                                    <span class="min-w-64">{{ $option->label }}</span>
+                                    <span class="inline-flex h-10 w-16" style="background-color: {{ $option->color ?? '#cbd5e1' }}"></span>
+                                </div>
+                            @endforeach
+                        </div>
                     </div>
                 </div>
             </main>
 
-            <footer class="grid grid-cols-3 items-end border-t border-slate-200 pt-3">
+            <footer class="grid grid-cols-3 items-end border-t border-slate-200 pt-2">
                 <div>
-                    <p class="text-sm font-semibold uppercase tracking-[0.25em] text-slate-400">Stav</p>
-                    <p class="mt-2 text-3xl font-semibold text-slate-950">
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Stav</p>
+                    <p class="mt-1 text-xl font-semibold text-slate-950">
                         @if ($voting->runtime_collector_enabled && $voting->runtime_timer_running)
                             Prebieha hlasovanie
                         @elseif ($voting->runtime_collector_enabled)
@@ -64,7 +66,7 @@
 
                 <div class="text-center">
                     <div @class([
-                        'mx-auto inline-flex min-w-72 items-center justify-center px-8 py-3 text-7xl font-semibold tracking-normal transition-colors',
+                        'mx-auto inline-flex min-w-52 items-center justify-center px-5 py-2 text-4xl font-semibold tracking-normal transition-colors',
                         'bg-emerald-500 text-white' => $timerIsActive && ! $timerIsWarning,
                         'bg-orange-500 text-white' => $timerIsWarning,
                         'bg-transparent text-slate-950' => ! $timerIsActive,
@@ -74,15 +76,15 @@
                 </div>
 
                 <div class="text-right">
-                    <p class="text-sm font-semibold uppercase tracking-[0.25em] text-slate-400">Prijaté zariadenia</p>
-                    <p class="mt-2 text-5xl font-semibold text-slate-950">{{ $participantCount }}</p>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Prijaté zariadenia</p>
+                    <p class="mt-1 text-3xl font-semibold text-slate-950">{{ $participantCount }}</p>
                 </div>
             </footer>
         </div>
 
         @if ($voting->runtime_results_visible)
-            <div class="absolute inset-0 flex items-center justify-center bg-white/95 px-10 backdrop-blur-2xl" data-presentation-result-overlay="blurred">
-                <div class="w-full max-w-6xl">
+            <div class="absolute inset-0 flex items-center justify-center bg-white/90 px-6 backdrop-blur-2xl" data-presentation-result-overlay="blurred">
+                <div class="w-full max-w-7xl">
                     <div class="mb-12 text-center">
                         <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Výsledok hlasovania</p>
                         <h2 class="mt-4 text-5xl font-semibold tracking-normal text-slate-950">{{ $question->text }}</h2>
@@ -94,14 +96,14 @@
                                 $percent = ((float) $result['weighted_total'] / $maxResultValue) * 100;
                             @endphp
                             <div class="flex h-full flex-col items-center justify-end gap-8" data-presentation-result-option>
-                                <div class="text-center text-4xl font-semibold text-slate-950">
-                                    {{ $result['label'] }}
+                                <div class="text-center text-6xl font-semibold text-slate-950">
+                                    {{ rtrim(rtrim(number_format($result['weighted_total'], 2, ',', ' '), '0'), ',') }}
                                 </div>
                                 <div class="flex h-80 w-full items-end justify-center" data-presentation-result-bar-space>
                                     <div class="w-32 min-w-24 transition-all" style="height: {{ max($percent, 2) }}%; background-color: {{ $result['color'] ?? '#64748b' }}"></div>
                                 </div>
-                                <div class="text-center text-6xl font-semibold text-slate-950">
-                                    {{ rtrim(rtrim(number_format($result['weighted_total'], 2, ',', ' '), '0'), ',') }}
+                                <div class="text-center text-4xl font-semibold text-slate-950">
+                                    {{ $result['label'] }}
                                 </div>
                             </div>
                         @endforeach

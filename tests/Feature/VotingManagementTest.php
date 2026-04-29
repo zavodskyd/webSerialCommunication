@@ -449,6 +449,37 @@ test('presentation reads runtime state and displays voting result chart', functi
         ->assertSeeText('5');
 });
 
+test('presentation uses the updated presentation layout proportions', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
+        'title' => 'Hlasovanie delegátov',
+        'header_text' => 'Hlasovanie 1',
+    ]);
+
+    $voting->createQuestionWithDefaults(
+        order: 1,
+        label: 'Hlasovanie 1',
+        text: 'Schválenie programu',
+        responseTimeSeconds: 30,
+    );
+
+    $this->get(route('votings.presentation', $voting))
+        ->assertOk()
+        ->assertSee('flex items-start gap-10', false)
+        ->assertSee('flex min-h-36 flex-1 items-center justify-end text-right', false)
+        ->assertSee('relative min-h-0 flex-1 pt-8', false)
+        ->assertSee('absolute left-0 top-[12%] max-w-5xl text-6xl font-light leading-tight tracking-normal text-slate-800', false)
+        ->assertSee('absolute left-1/2 top-[52%] w-full max-w-[54rem] -translate-x-1/2', false)
+        ->assertSee('mx-auto mb-12 max-w-5xl text-center text-5xl font-medium leading-tight text-slate-950', false)
+        ->assertSee('mx-auto w-full max-w-4xl', false)
+        ->assertSee('mx-auto w-fit space-y-12', false)
+        ->assertSee('flex items-center gap-12 text-5xl font-medium text-slate-950', false)
+        ->assertSee('inline-flex h-10 w-16', false)
+        ->assertSee('grid grid-cols-3 items-end border-t border-slate-200 pt-2', false)
+        ->assertSee('min-w-52 items-center justify-center px-5 py-2 text-4xl', false)
+        ->assertSee('text-3xl font-semibold text-slate-950', false);
+});
+
 test('user can open printable exports for closed voting questions', function () {
     $voting = Voting::query()->create([
         'name' => 'Valné zhromaždenie',

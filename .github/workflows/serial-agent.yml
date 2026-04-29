@@ -132,6 +132,6 @@ jobs:
       - name: Upload NativePHP Windows app
         uses: actions/upload-artifact@v6
         with:
-          name: nativephp-win64-with-serial-agent
-          path: nativephp/electron/dist/**
+          name: nativephp-installer-with-serial-agent
+          path: nativephp/electron/dist/Hlasovanie-*setup.exe
           if-no-files-found: error

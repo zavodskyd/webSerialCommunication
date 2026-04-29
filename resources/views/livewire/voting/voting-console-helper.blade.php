@@ -107,7 +107,7 @@
                             </div>
                             <p class="mt-6 text-3xl font-medium leading-tight text-slate-900 sm:text-5xl">{{ $currentQuestion->text }}</p>
 
-                            <div class="mt-10 space-y-5">
+                            <div class="mt-8 space-y-5">
                                 @foreach ($currentQuestion->options as $option)
                                     <div class="flex items-center gap-5 text-2xl font-medium text-slate-900 sm:text-4xl">
                                         <span class="w-16 text-right">{{ $option->key }}.</span>
@@ -118,7 +118,7 @@
                             </div>
                         </div>
 
-                        <div class="min-w-[220px] rounded-[2rem] bg-slate-950 px-6 py-8 text-center text-white">
+                        <div class="min-w-[220px] rounded-[2rem] bg-gray-800 px-6 py-8 text-center text-white">
                             <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Čas</p>
                             <p class="mt-4 text-6xl font-semibold tracking-tight">{{ sprintf('%02d:%02d', intdiv($remainingSeconds, 60), $remainingSeconds % 60) }}</p>
                             <p class="mt-3 text-sm text-slate-400">Predvolený čas {{ $currentQuestion->response_time_seconds }} s</p>
@@ -128,7 +128,10 @@
                     <div class="border-t border-slate-200 bg-slate-50 px-8 py-6">
                         <div class="flex flex-wrap gap-3">
                             <button type="button" wire:click="goToPreviousQuestion" @disabled($collectorEnabled || $resultsVisible) class="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">
-                                Predchádzajúca
+                                Dozadu
+                            </button>
+                            <button type="button" wire:click="startQuestionPausedViaHelper" @disabled(! $serialConnected || $collectorEnabled) class="rounded-2xl border border-slate-300 bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60">
+                                Štart bez času
                             </button>
                             <button type="button" wire:click="startQuestionViaHelper" @disabled(! $serialConnected || $timerRunning) class="rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60">
                                 Start
@@ -195,7 +198,7 @@
 
             <aside class="space-y-6">
                 <div class="rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                    <h2 class="text-lg font-semibold text-slate-900">USB ovládanie</h2>
+                    <h2 class="text-lg font-semibold text-slate-900">USB serial ovládanie</h2>
 
                     @if ($usesExternalAgent && ! $serialConnected)
                         <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -229,8 +232,6 @@
                             </button>
                         </div>
                     @endif
-
-                    <p class="mt-3 text-sm text-slate-500">Collector sa pri štarte otázky zapne automaticky. Počas `Pauza` ostáva aktívny.</p>
                 </div>
 
                 <div class="rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -242,25 +243,21 @@
                 </div>
 
                 <div class="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <h2 class="text-xl font-semibold text-slate-900">Posledný prijatý hlas</h2>
+                    {{-- <h2 class="text-xl font-semibold text-slate-900">Posledný prijatý hlas</h2>
                     <div class="mt-6 rounded-[1.5rem] bg-slate-950 px-6 py-6 text-white">
                         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Zariadenie</p>
                         <p class="mt-3 text-4xl font-semibold">{{ $lastMatchedDeviceNumber ?: '—' }}</p>
                         <p class="mt-6 text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Voľba</p>
                         <p class="mt-3 text-4xl font-semibold">{{ $lastButtonName ?: '—' }}</p>
-                    </div>
+                    </div> --}}
 
-                    <div class="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4">
+                    <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4">
                         <p class="text-sm font-medium text-slate-500">Stav zápisu</p>
                         <p class="mt-2 text-base font-semibold text-slate-900">{{ $lastVoteMessage ?: 'Zatiaľ neprišiel žiadny hlas.' }}</p>
                     </div>
                 </div>
             </aside>
         </div>
-
-        <p class="mt-6 text-center text-xs font-mono text-slate-400">
-            build {{ \App\Support\BuildVersion::current() }} (driver: {{ config('serial.driver') }})
-        </p>
     </div>
 
     @if ($resultsVisible)

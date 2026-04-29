@@ -171,11 +171,17 @@ class VotingConsole extends Component
         $payload = $this->startQuestion();
 
         if (($payload['collectorEnabled'] ?? false) === true) {
-            if ($this->isRustAgentDriver()) {
-                app(SerialAgentClient::class)->command('start');
-            } else {
-                SerialHelperClient::call('start');
-            }
+            $this->startNativeSerialCollection();
+        }
+    }
+
+    public function startQuestionPausedViaHelper(): void
+    {
+        $payload = $this->startQuestion();
+
+        if (($payload['collectorEnabled'] ?? false) === true) {
+            $this->startNativeSerialCollection();
+            $this->pauseQuestion();
         }
     }
 
@@ -677,6 +683,17 @@ class VotingConsole extends Component
             'console-state-updated',
             ...$this->consoleStatePayload(),
         );
+    }
+
+    private function startNativeSerialCollection(): void
+    {
+        if ($this->isRustAgentDriver()) {
+            app(SerialAgentClient::class)->command('start');
+
+            return;
+        }
+
+        SerialHelperClient::call('start');
     }
 
     /**

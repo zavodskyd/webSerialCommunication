@@ -97,6 +97,35 @@ test('rust agent driver keeps collection running while paused and stops only on 
     expect($component->collectorEnabled)->toBeFalse();
 });
 
+test('rust agent driver can start collection with the timer paused', function () {
+    config(['serial.driver' => 'rust-agent']);
+
+    [, $voting, $question] = createConsoleFixture();
+
+    Carbon::setTestNow(now()->startOfSecond());
+
+    $client = $this->mock(SerialAgentClient::class);
+    $client->shouldReceive('command')->once()->with('start')->andReturn(['ok' => true]);
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+    $component->serialConnected = true;
+
+    $component->startQuestionPausedViaHelper();
+
+    $voting->refresh();
+
+    expect($component->collectorEnabled)->toBeTrue();
+    expect($component->timerRunning)->toBeFalse();
+    expect($component->remainingSeconds)->toBe(30);
+    expect($voting->runtime_collector_enabled)->toBeTrue();
+    expect($voting->runtime_timer_running)->toBeFalse();
+    expect($voting->runtime_remaining_seconds)->toBe(30);
+    expect($question->fresh()->status)->toBe('paused');
+
+    Carbon::setTestNow();
+});
+
 test('events log toggle flips the visible flag', function () {
     [, $voting] = createConsoleFixture();
 

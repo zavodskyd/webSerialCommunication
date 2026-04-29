@@ -1,40 +1,110 @@
-name: Serial Agent
+name: Windows NativePHP Build
 
 on:
+  workflow_dispatch:
   push:
-    branches: [main]
     paths:
+      - 'app/**'
+      - 'bootstrap/**'
+      - 'config/**'
+      - 'database/**'
+      - 'nativephp/**'
+      - 'public/**'
+      - 'resources/**'
+      - 'routes/**'
       - 'serial-agent/**'
       - '.github/workflows/serial-agent.yml'
+      - 'composer.json'
+      - 'composer.lock'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
   pull_request:
     branches: [main]
     paths:
+      - 'app/**'
+      - 'bootstrap/**'
+      - 'config/**'
+      - 'database/**'
+      - 'nativephp/**'
+      - 'public/**'
+      - 'resources/**'
+      - 'routes/**'
       - 'serial-agent/**'
       - '.github/workflows/serial-agent.yml'
+      - 'composer.json'
+      - 'composer.lock'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
 
 concurrency:
-  group: serial-agent-${{ github.ref }}
+  group: windows-nativephp-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   win64:
-    name: Build Win64 serial-agent.exe
+    name: Build Win64 app with serial-agent.exe
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, sqlite, pdo_sqlite, intl, dom, fileinfo
+          coverage: none
+          tools: composer:v2
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
+      - name: Get composer cache directory
+        id: composer-cache
+        shell: pwsh
+        run: echo "dir=$(composer config cache-files-dir)" >> $env:GITHUB_OUTPUT
+
+      - name: Cache composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-php-8.3-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php-8.3-composer-
+
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: serial-agent
 
-      - name: Test
+      - name: Install composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Prepare production environment
+        shell: pwsh
+        run: |
+          Copy-Item .env.example .env
+          php artisan key:generate --no-interaction
+          (Get-Content .env) `
+            -replace '^APP_ENV=.*', 'APP_ENV=production' `
+            -replace '^APP_DEBUG=.*', 'APP_DEBUG=false' `
+            -replace '^SERIAL_DRIVER=.*', 'SERIAL_DRIVER=rust-agent' `
+            | Set-Content .env
+
+      - name: Test Rust agent
         run: cargo test --manifest-path serial-agent/Cargo.toml
 
       - name: Build Win64 executable
@@ -46,9 +116,22 @@ jobs:
           New-Item -ItemType Directory -Force extras/serial-agent
           Copy-Item serial-agent/target/x86_64-pc-windows-msvc/release/serial-agent.exe extras/serial-agent/serial-agent.exe
 
-      - name: Upload executable
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Build NativePHP Windows app
+        run: php artisan native:build win x64 --no-interaction
+
+      - name: Upload serial-agent executable
         uses: actions/upload-artifact@v4
         with:
           name: serial-agent-win64
           path: extras/serial-agent/serial-agent.exe
+          if-no-files-found: error
+
+      - name: Upload NativePHP Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: nativephp-win64-with-serial-agent
+          path: nativephp/electron/dist/**
           if-no-files-found: error

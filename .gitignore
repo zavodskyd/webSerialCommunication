@@ -20,3 +20,4 @@ yarn-error.log
 /.vscode
 /.zed
 /nativephp/dist
+/extras/serial-agent/serial-agent.exe

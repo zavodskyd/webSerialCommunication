@@ -7,6 +7,7 @@ use App\Models\VoteEvent;
 use App\Models\Voting;
 use App\Models\VotingQuestion;
 use App\Services\Voting\VoteRecorder;
+use App\Support\SerialAgentClient;
 use App\Support\SerialHelperClient;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -40,7 +41,7 @@ class VotingConsole extends Component
     public bool $eventsLogVisible = false;
 
     /**
-     * --- node-helper driver state (only meaningful when SERIAL_DRIVER=node-helper) ---
+     * --- native serial driver state (node-helper / rust-agent) ---
      */
     public bool $serialConnected = false;
 
@@ -101,6 +102,16 @@ class VotingConsole extends Component
         return config('serial.driver') === 'node-helper';
     }
 
+    public function isRustAgentDriver(): bool
+    {
+        return config('serial.driver') === 'rust-agent';
+    }
+
+    public function isNativeSerialDriver(): bool
+    {
+        return $this->isHelperDriver() || $this->isRustAgentDriver();
+    }
+
     public function refreshSerialPorts(): void
     {
         $response = SerialHelperClient::call('list_ports');
@@ -110,6 +121,12 @@ class VotingConsole extends Component
 
     public function connectSerial(): void
     {
+        if ($this->isRustAgentDriver()) {
+            $this->lastVoteMessage = 'Serial zariadenie vyber a pripoj v okne Serial Agent.';
+
+            return;
+        }
+
         if ($this->selectedPortPath === null || $this->selectedPortPath === '') {
             return;
         }
@@ -134,6 +151,15 @@ class VotingConsole extends Component
             return;
         }
 
+        if ($this->isRustAgentDriver()) {
+            app(SerialAgentClient::class)->command('close');
+
+            $this->serialConnected = false;
+            $this->connectedPortPath = null;
+
+            return;
+        }
+
         SerialHelperClient::call('close');
 
         $this->serialConnected = false;
@@ -145,25 +171,39 @@ class VotingConsole extends Component
         $payload = $this->startQuestion();
 
         if (($payload['collectorEnabled'] ?? false) === true) {
-            SerialHelperClient::call('start');
+            if ($this->isRustAgentDriver()) {
+                app(SerialAgentClient::class)->command('start');
+            } else {
+                SerialHelperClient::call('start');
+            }
         }
     }
 
     public function pauseQuestionViaHelper(): void
     {
         $this->pauseQuestion();
-        SerialHelperClient::call('stop');
+
+        if ($this->isRustAgentDriver()) {
+            app(SerialAgentClient::class)->command('stop');
+        } else {
+            SerialHelperClient::call('stop');
+        }
     }
 
     public function finishQuestionViaHelper(): void
     {
-        SerialHelperClient::call('stop');
+        if ($this->isRustAgentDriver()) {
+            app(SerialAgentClient::class)->command('stop');
+        } else {
+            SerialHelperClient::call('stop');
+        }
+
         $this->finishQuestion();
     }
 
     public function liveTick(): void
     {
-        if ($this->isHelperDriver()) {
+        if ($this->isNativeSerialDriver()) {
             $this->refreshLastVoteFromEvents();
             $this->probeHelperHealthIfDue();
         }
@@ -182,7 +222,9 @@ class VotingConsole extends Component
         $this->remainingSeconds = max(0, $question->response_time_seconds - $elapsed);
 
         if ($this->remainingSeconds <= 0) {
-            if ($this->isHelperDriver()) {
+            if ($this->isRustAgentDriver()) {
+                app(SerialAgentClient::class)->command('stop');
+            } elseif ($this->isHelperDriver()) {
                 SerialHelperClient::call('stop');
             }
 
@@ -200,10 +242,16 @@ class VotingConsole extends Component
 
         $this->lastHelperHealthAt = $now;
 
-        $response = SerialHelperClient::health();
+        $response = $this->isRustAgentDriver()
+            ? app(SerialAgentClient::class)->health()
+            : SerialHelperClient::health();
 
         $this->helperHealthy = (bool) ($response['ok'] ?? false);
-        $this->helperQueuedFrames = is_int($response['queuedFrames'] ?? null) ? $response['queuedFrames'] : 0;
+        $this->serialConnected = (bool) ($response['connected'] ?? $this->serialConnected);
+        $this->connectedPortPath = is_string($response['selected_port'] ?? null)
+            ? $response['selected_port']
+            : $this->connectedPortPath;
+        $this->helperQueuedFrames = (int) ($response['queuedFrames'] ?? $response['queued_frames'] ?? 0);
     }
 
     private function refreshLastVoteFromEvents(): void
@@ -469,7 +517,7 @@ class VotingConsole extends Component
     {
         $question = $this->currentQuestion()->load(['options', 'votes']);
 
-        $template = $this->isHelperDriver()
+        $template = $this->isNativeSerialDriver()
             ? 'livewire.voting.voting-console-helper'
             : 'livewire.voting.voting-console';
 
@@ -480,6 +528,7 @@ class VotingConsole extends Component
             'codeLookup' => $this->getCodeLookup(),
             'codePrefixes' => $this->getCodePrefixes(),
             'eventsLog' => $this->eventsLogVisible ? $this->recentEventsForCurrentVoting() : collect(),
+            'usesExternalAgent' => $this->isRustAgentDriver(),
         ])->layout('layouts.app')->title('Operátorská konzola');
     }
 

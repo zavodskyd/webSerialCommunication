@@ -1,13 +1,12 @@
-{{-- Operator console — node-helper driver path. ----------------------------
+{{-- Operator console — native serial helper driver path. --------------------
 
-     Active when config('serial.driver') === 'node-helper'. Replaces the
-     legacy Web Serial / @script-block view at voting-console.blade.php.
+     Active when config('serial.driver') is node-helper or rust-agent.
+     Replaces the legacy Web Serial / @script-block view at voting-console.blade.php.
 
      Key differences from the legacy view:
        - No JavaScript at all (no Web Serial, no @script, no DOM mutation).
-       - Serial port is owned by the Node helper running in the Electron main
-         process. UI calls into VotingConsole Livewire methods which proxy to
-         the helper via /internal/serial-control.
+       - Serial port is owned by a helper process. In rust-agent mode, port
+         selection happens in the separate Serial Agent window.
        - Live updates use wire:poll.500ms. The poll re-renders only the live
          section (results panel + last-vote indicator + timer) — the timer
          is computed server-side from $currentQuestion->opened_at.
@@ -198,7 +197,12 @@
                 <div class="rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-slate-200">
                     <h2 class="text-lg font-semibold text-slate-900">USB ovládanie</h2>
 
-                    @if (! $serialConnected)
+                    @if ($usesExternalAgent && ! $serialConnected)
+                        <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                            Vyber USB zariadenie a klikni Connect v samostatnom okne Serial Agent.
+                            Táto konzola začne hlasovanie až keď agent nahlási pripojený transceiver.
+                        </div>
+                    @elseif (! $serialConnected)
                         <div class="mt-4 space-y-3">
                             <select wire:model.live="selectedPortPath" class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm">
                                 <option value="">Vyberte port…</option>
@@ -255,7 +259,7 @@
         </div>
 
         <p class="mt-6 text-center text-xs font-mono text-slate-400">
-            build {{ \App\Support\BuildVersion::current() }} (driver: node-helper)
+            build {{ \App\Support\BuildVersion::current() }} (driver: {{ config('serial.driver') }})
         </p>
     </div>
 

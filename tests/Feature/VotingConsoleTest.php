@@ -7,6 +7,7 @@ use App\Models\Vote;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
 use App\Models\VotingQuestion;
+use App\Support\SerialAgentClient;
 use Illuminate\Support\Carbon;
 
 test('pause keeps collector active and still accepts votes', function () {
@@ -70,6 +71,29 @@ test('helper driver: liveTick marks helper as unhealthy when not running', funct
 
     expect($component->helperHealthy)->toBeFalse();
     expect($component->helperQueuedFrames)->toBe(0);
+});
+
+test('rust agent driver starts and stops collection through the serial agent client', function () {
+    config(['serial.driver' => 'rust-agent']);
+
+    [, $voting] = createConsoleFixture();
+
+    $client = $this->mock(SerialAgentClient::class);
+    $client->shouldReceive('command')->once()->with('start')->andReturn(['ok' => true]);
+    $client->shouldReceive('command')->twice()->with('stop')->andReturn(['ok' => true]);
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+    $component->serialConnected = true;
+
+    $component->startQuestionViaHelper();
+    expect($component->collectorEnabled)->toBeTrue();
+
+    $component->pauseQuestionViaHelper();
+    expect($component->timerRunning)->toBeFalse();
+
+    $component->finishQuestionViaHelper();
+    expect($component->collectorEnabled)->toBeFalse();
 });
 
 test('events log toggle flips the visible flag', function () {

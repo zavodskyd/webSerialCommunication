@@ -3,9 +3,12 @@
 namespace App\Providers;
 
 use App\Support\NativeDatabaseBootstrapper;
+use App\Support\SerialAgentFiles;
 use App\Support\SerialHelperDiagnostics;
+use App\Support\SerialHelperTokens;
 use Illuminate\Support\Facades\Log;
 use Native\Desktop\Contracts\ProvidesPhpIni;
+use Native\Desktop\Facades\ChildProcess;
 use Native\Desktop\Facades\Window;
 
 class NativeAppServiceProvider implements ProvidesPhpIni
@@ -43,6 +46,8 @@ class NativeAppServiceProvider implements ProvidesPhpIni
             'driver' => config('serial.driver'),
         ]);
 
+        $this->startRustSerialAgent();
+
         Window::open()
             ->maximized();
     }
@@ -54,5 +59,46 @@ class NativeAppServiceProvider implements ProvidesPhpIni
     {
         return [
         ];
+    }
+
+    private function startRustSerialAgent(): void
+    {
+        if (config('serial.driver') !== 'rust-agent') {
+            return;
+        }
+
+        $agentPath = SerialAgentFiles::executablePath();
+
+        if (! is_file($agentPath)) {
+            Log::warning('Rust serial agent executable not found.', [
+                'path' => $agentPath,
+            ]);
+
+            return;
+        }
+
+        $token = SerialHelperTokens::current();
+        $storagePath = storage_path();
+
+        ChildProcess::start(
+            cmd: [$agentPath],
+            alias: 'serial-agent',
+            cwd: dirname($agentPath),
+            env: [
+                'STORAGE_PATH' => $storagePath,
+                'INTERNAL_TOKEN' => $token,
+            ],
+            persistent: true,
+        );
+
+        ChildProcess::artisan(
+            cmd: ['serial-agent:bridge'],
+            alias: 'serial-agent-bridge',
+            env: [
+                'STORAGE_PATH' => $storagePath,
+                'INTERNAL_TOKEN' => $token,
+            ],
+            persistent: true,
+        );
     }
 }

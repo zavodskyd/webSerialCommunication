@@ -1,0 +1,40 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\SerialAgent;
+
+use App\Models\Voting;
+use App\Services\Voting\VoteRecorder;
+use App\Services\Voting\VoteRecordingResult;
+
+class SerialAgentFrameHandler
+{
+    public function __construct(private readonly VoteRecorder $recorder) {}
+
+    public function handle(string $hex): ?VoteRecordingResult
+    {
+        $voting = Voting::query()
+            ->whereNotNull('current_voting_question_id')
+            ->latest()
+            ->first();
+
+        if ($voting === null) {
+            return null;
+        }
+
+        $question = $voting->questions()->find($voting->current_voting_question_id);
+
+        if ($question === null) {
+            return null;
+        }
+
+        return $this->recorder->record(
+            code: $hex,
+            voting: $voting,
+            question: $question,
+            collectorEnabledHint: false,
+            source: 'rust-agent',
+        );
+    }
+}

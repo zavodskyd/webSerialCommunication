@@ -9,6 +9,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "amphp/websocket-client": "^2.0",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^3.0",
         "livewire/livewire": "^3.6",

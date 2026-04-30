@@ -1,4 +1,7 @@
-@extends('layouts.print', ['title' => 'Stlačené možnosti - '.$voting->name])
+@extends('layouts.print', [
+    'title' => 'Stlačené možnosti - '.$voting->name,
+    'filename' => 'Stlacene moznosti - '.$voting->name,
+])
 
 @section('content')
     <main class="mx-auto max-w-7xl px-6 py-8 print:max-w-none print:px-0 print:py-0">

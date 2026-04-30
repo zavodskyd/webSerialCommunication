@@ -10,10 +10,19 @@ test('print layout prefers desktop ipc pdf export with explicit filename', funct
         ->toContain('landscape: true,')
         ->toContain("pageSize: 'A4',")
         ->toContain('printBackground: true,')
-        ->toContain('if (window.NativePHP?.printToPDF) {');
+        ->toContain('const pdfFilename = @js($pdfFilename);')
+        ->toContain('const filename = `${normalizeFilename(pdfFilename)}.pdf`;');
 
-    expect(strpos($layout, 'if (window.electron?.ipcRenderer) {'))
-        ->toBeLessThan(strpos($layout, 'if (window.NativePHP?.printToPDF) {'));
+    expect($layout)->not->toContain('if (window.NativePHP?.printToPDF) {');
+});
+
+test('native electron preload exposes ipc renderer bridge for custom pdf export', function () {
+    $preload = file_get_contents(base_path('nativephp/electron/electron-plugin/dist/preload/index.mjs'));
+
+    expect($preload)
+        ->toContain("contextBridge.exposeInMainWorld('electron', {")
+        ->toContain('invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args)')
+        ->toContain('send: (channel, ...args) => ipcRenderer.send(channel, ...args)');
 });
 
 test('native electron pdf export keeps save dialog filename and landscape defaults', function () {

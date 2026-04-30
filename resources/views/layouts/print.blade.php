@@ -4,6 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         @php($printTitle = $title ?? config('app.name', 'Hlasovanie'))
+        @php($pdfFilename = $filename ?? $printTitle)
         <title>{{ $printTitle }}</title>
 
         <link rel="preconnect" href="https://fonts.bunny.net">
@@ -63,6 +64,7 @@
 
         <script>
             const printTitle = @js($printTitle);
+            const pdfFilename = @js($pdfFilename);
 
             const normalizeFilename = (value) => {
                 return String(value || 'Hlasovanie')
@@ -78,21 +80,11 @@
             document.title = normalizeFilename(printTitle);
 
             exportPdfButton?.addEventListener('click', async () => {
-                const filename = `${normalizeFilename(printTitle)}.pdf`;
+                const filename = `${normalizeFilename(pdfFilename)}.pdf`;
 
                 if (window.electron?.ipcRenderer) {
                     await window.electron.ipcRenderer.invoke('print-to-pdf', {
                         filename,
-                        landscape: true,
-                        pageSize: 'A4',
-                        printBackground: true,
-                    });
-
-                    return;
-                }
-
-                if (window.NativePHP?.printToPDF) {
-                    await window.NativePHP.printToPDF({
                         landscape: true,
                         pageSize: 'A4',
                         printBackground: true,

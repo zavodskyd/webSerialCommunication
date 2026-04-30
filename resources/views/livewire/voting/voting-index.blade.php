@@ -31,29 +31,10 @@
             </div>
         </div>
 
-        <div class="grid gap-4 md:grid-cols-3">
-            <div class="rounded-[1.75rem] bg-white p-6 shadow-sm ring-1 ring-slate-200/80">
-                <p class="text-sm font-medium text-slate-500">Počet hlasovaní</p>
-                <p class="mt-3 text-3xl font-semibold text-slate-900">{{ $votings->count() }}</p>
-            </div>
-            <div class="rounded-[1.75rem] bg-white p-6 shadow-sm ring-1 ring-slate-200/80">
-                <p class="text-sm font-medium text-slate-500">Otázky spolu</p>
-                <p class="mt-3 text-3xl font-semibold text-slate-900">{{ $votings->sum('questions_count') }}</p>
-            </div>
-            <div class="rounded-[1.75rem] bg-white p-6 shadow-sm ring-1 ring-slate-200/80">
-                <p class="text-sm font-medium text-slate-500">Posledná príprava</p>
-                <p class="mt-3 text-lg font-semibold text-slate-900">
-                    {{ optional($votings->first())->created_at?->format('d.m.Y H:i') ?? 'Zatiaľ nič' }}
-                </p>
-            </div>
-        </div>
-
         <div class="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200/80">
-            <div class="flex items-center justify-between gap-4">
-                <div>
-                    <h2 class="text-2xl font-semibold text-slate-900">Pripravené hlasovania</h2>
-                    <p class="mt-1 text-sm text-slate-500">Použi explicitné akcie na editáciu, konzolu alebo exporty uzavretých hlasovaní.</p>
-                </div>
+            <div class="flex items-center gap-4">
+                <h2 class="inline-block whitespace-nowrap text-2xl font-semibold text-slate-900">Pripravené hlasovania</h2>
+                <p class="inline-block whitespace-nowrap text-3xl font-semibold text-slate-900">{{ $votings->count() }}</p>
             </div>
 
             <div class="mt-6 space-y-4">

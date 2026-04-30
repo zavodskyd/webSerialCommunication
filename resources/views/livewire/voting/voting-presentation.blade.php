@@ -25,7 +25,7 @@
             </header>
 
             <main class="relative min-h-0 flex-1 pt-8">
-                <div class="absolute left-0 top-[12%] max-w-5xl text-6xl font-light leading-tight tracking-normal text-slate-800">
+                <div class="absolute left-0 top-[12%] max-w-5xl text-5xl font-light leading-tight tracking-normal text-slate-800">
                     {{ $voting->header_text ?: 'Hlavička hlasovania' }}
                 </div>
 
@@ -50,7 +50,7 @@
 
             <footer class="grid grid-cols-3 items-end border-t border-slate-200 pt-2">
                 <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Stav</p>
+                    {{-- <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Stav</p> --}}
                     <p class="mt-1 text-xl font-semibold text-slate-950">
                         @if ($voting->runtime_collector_enabled && $voting->runtime_timer_running)
                             Prebieha hlasovanie
@@ -76,7 +76,7 @@
                 </div>
 
                 <div class="text-right">
-                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Prijaté zariadenia</p>
+                    {{-- <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Prijaté zariadenia</p> --}}
                     <p class="mt-1 text-3xl font-semibold text-slate-950">{{ $participantCount }}</p>
                 </div>
             </footer>

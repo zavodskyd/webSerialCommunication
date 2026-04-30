@@ -48,12 +48,16 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     env:
-      NATIVEPHP_AZURE_ENDPOINT: ${{ secrets.NATIVEPHP_AZURE_ENDPOINT }}
-      NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME: ${{ secrets.NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME }}
-      NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME: ${{ secrets.NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      NATIVEPHP_AZURE_ENDPOINT: ${{ secrets.NATIVEPHP_AZURE_ENDPOINT || vars.NATIVEPHP_AZURE_ENDPOINT }}
+      NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME: ${{ secrets.NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME || vars.NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME }}
+      NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME: ${{ secrets.NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME || vars.NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || vars.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || vars.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v6
 
@@ -76,22 +80,36 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Verify Azure signing configuration
+      - name: Show Windows signing configuration
         shell: pwsh
         run: |
-          $required = @(
+          $known = @(
             'NATIVEPHP_AZURE_ENDPOINT',
             'NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME',
             'NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME',
             'AZURE_TENANT_ID',
             'AZURE_CLIENT_ID',
-            'AZURE_CLIENT_SECRET'
+            'AZURE_CLIENT_SECRET',
+            'CSC_LINK',
+            'CSC_KEY_PASSWORD',
+            'WIN_CSC_LINK',
+            'WIN_CSC_KEY_PASSWORD'
           )
 
-          foreach ($name in $required) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              throw "Missing required GitHub secret/env for Windows code signing: $name"
+          $configured = 0
+
+          foreach ($name in $known) {
+            $isConfigured = -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))
+
+            if ($isConfigured) {
+              $configured++
             }
+
+            Write-Host "$name configured: $isConfigured"
+          }
+
+          if ($configured -eq 0) {
+            Write-Warning 'No known Windows signing env variables are configured. NativePHP build may still sign through another mechanism, but the serial-agent signature check will fail if it does not.'
           }
 
       - name: Get composer cache directory

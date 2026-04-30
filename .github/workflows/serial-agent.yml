@@ -122,11 +122,22 @@ jobs:
       - name: Build NativePHP Windows app
         run: php artisan native:build win x64 --no-interaction
 
+      - name: Verify signed serial-agent executable
+        shell: pwsh
+        run: |
+          $agentPath = 'nativephp/electron/dist/win-unpacked/extras/serial-agent/serial-agent.exe'
+          $signature = Get-AuthenticodeSignature $agentPath
+          $signature | Format-List
+
+          if ($signature.Status -ne 'Valid') {
+            throw "serial-agent.exe must be signed before packaging. Status: $($signature.Status)"
+          }
+
       - name: Upload serial-agent executable
         uses: actions/upload-artifact@v6
         with:
           name: serial-agent-win64
-          path: extras/serial-agent/serial-agent.exe
+          path: nativephp/electron/dist/win-unpacked/extras/serial-agent/serial-agent.exe
           if-no-files-found: error
 
       - name: Upload NativePHP Windows app

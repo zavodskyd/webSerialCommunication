@@ -1,6 +1,9 @@
 @extends('layouts.print', [
     'title' => 'Stlačené možnosti - '.$voting->name,
     'filename' => 'Stlacene moznosti - '.$voting->name,
+    'exportPdfUrl' => $exportPdfUrl ?? route('votings.exports.pressed-options.pdf', $voting),
+    'showPrintToolbar' => $showPrintToolbar ?? true,
+    'showPrintScript' => $showPrintScript ?? true,
 ])
 
 @section('content')

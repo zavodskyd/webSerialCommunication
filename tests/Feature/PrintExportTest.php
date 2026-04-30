@@ -1,28 +1,35 @@
 <?php
 
-test('print layout prefers desktop ipc pdf export with explicit filename', function () {
+test('print layout uses a route-based native pdf export and keeps system print fallback separate', function () {
     $layout = file_get_contents(resource_path('views/layouts/print.blade.php'));
 
     expect($layout)
-        ->toContain('if (window.electron?.ipcRenderer) {')
-        ->toContain("await window.electron.ipcRenderer.invoke('print-to-pdf', {")
-        ->toContain('filename,')
-        ->toContain('landscape: true,')
-        ->toContain("pageSize: 'A4',")
-        ->toContain('printBackground: true,')
-        ->toContain('const pdfFilename = @js($pdfFilename);')
-        ->toContain('const filename = `${normalizeFilename(pdfFilename)}.pdf`;');
+        ->toContain('<base href="{{ rtrim(url(\'/\'), \'/\') }}/">')
+        ->toContain('const exportPdfUrl = @js($exportPdfUrl);')
+        ->toContain('if (! exportPdfUrl || ! window.axios) {')
+        ->toContain('const response = await window.axios.get(exportPdfUrl, {')
+        ->toContain("Accept: 'application/json',")
+        ->toContain('window.alert(`PDF bolo uložené do:\n${response.data.path}`);')
+        ->toContain('onclick="window.print()"');
 
-    expect($layout)->not->toContain('if (window.NativePHP?.printToPDF) {');
+    expect($layout)
+        ->not->toContain("window.electron.ipcRenderer.invoke('print-to-pdf'")
+        ->not->toContain('if (window.NativePHP?.printToPDF) {');
 });
 
-test('native electron preload exposes ipc renderer bridge for custom pdf export', function () {
-    $preload = file_get_contents(base_path('nativephp/electron/electron-plugin/dist/preload/index.mjs'));
+test('results and pressed-options exports pass their native pdf endpoints into the print layout', function () {
+    $resultsView = file_get_contents(resource_path('views/voting-exports/results.blade.php'));
+    $pressedOptionsView = file_get_contents(resource_path('views/voting-exports/pressed-options.blade.php'));
 
-    expect($preload)
-        ->toContain("contextBridge.exposeInMainWorld('electron', {")
-        ->toContain('invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args)')
-        ->toContain('send: (channel, ...args) => ipcRenderer.send(channel, ...args)');
+    expect($resultsView)
+        ->toContain("route('votings.exports.results.pdf', \$voting)")
+        ->toContain("'showPrintToolbar' => \$showPrintToolbar ?? true")
+        ->toContain("'showPrintScript' => \$showPrintScript ?? true");
+
+    expect($pressedOptionsView)
+        ->toContain("route('votings.exports.pressed-options.pdf', \$voting)")
+        ->toContain("'showPrintToolbar' => \$showPrintToolbar ?? true")
+        ->toContain("'showPrintScript' => \$showPrintScript ?? true");
 });
 
 test('native electron pdf export keeps save dialog filename and landscape defaults', function () {

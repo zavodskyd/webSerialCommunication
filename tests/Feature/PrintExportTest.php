@@ -34,6 +34,7 @@ test('results and pressed-options exports pass their native pdf endpoints into t
 
 test('native electron pdf export keeps save dialog filename and landscape defaults', function () {
     $mainProcess = file_get_contents(base_path('nativephp/electron/src/main/index.js'));
+    $systemApi = file_get_contents(base_path('nativephp/electron/electron-plugin/src/server/api/system.ts'));
 
     expect($mainProcess)
         ->toContain("title: 'Uložiť PDF',")
@@ -41,4 +42,8 @@ test('native electron pdf export keeps save dialog filename and landscape defaul
         ->toContain('landscape: options.landscape ?? true,')
         ->toContain("pageSize: options.pageSize || 'A4',")
         ->toContain('printBackground: options.printBackground ?? true,');
+
+    expect($systemApi)
+        ->toContain('data:text/html;charset=UTF-8;base64,${html}')
+        ->not->toContain('data:text/html;base64;charset=UTF-8,${html}');
 });

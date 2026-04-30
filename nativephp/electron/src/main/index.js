@@ -1,4 +1,4 @@
-import {app, BrowserWindow, ipcMain, session, utilityProcess} from 'electron'
+import {app, BrowserWindow, dialog, ipcMain, session, utilityProcess} from 'electron'
 import NativePHP from '#plugin'
 import {appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync} from 'fs'
 import path from 'path'
@@ -473,6 +473,45 @@ const spawnSerialHelper = () => {
 };
 
 app.whenReady().then(configureWebSerial);
+
+ipcMain.handle('print-to-pdf', async (event, options = {}) => {
+    const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+
+    if (!sourceWindow) {
+        throw new Error('Nepodarilo sa nájsť aktuálne okno pre PDF export.');
+    }
+
+    const safeFilename = String(options.filename || 'Hlasovanie.pdf')
+        .replace(/[\\/:*?"<>|]+/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const {canceled, filePath} = await dialog.showSaveDialog(sourceWindow, {
+        title: 'Uložiť PDF',
+        defaultPath: safeFilename.endsWith('.pdf') ? safeFilename : `${safeFilename}.pdf`,
+        filters: [
+            {name: 'PDF', extensions: ['pdf']},
+        ],
+    });
+
+    if (canceled || !filePath) {
+        return null;
+    }
+
+    const pdf = await sourceWindow.webContents.printToPDF({
+        landscape: options.landscape ?? true,
+        pageSize: options.pageSize || 'A4',
+        printBackground: options.printBackground ?? true,
+        margins: {
+            marginType: 'default',
+        },
+    });
+
+    const fs = await import('node:fs/promises');
+    await fs.writeFile(filePath, pdf);
+
+    return filePath;
+});
 
 // spawnSerialHelper() disabled. Reasons (from Dušan's 2026-04-28 testing):
 //   1. serialport native binary has Win32 ABI mismatch ("not a valid Win32

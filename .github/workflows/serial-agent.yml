@@ -3,6 +3,8 @@ name: Windows NativePHP Build
 on:
   workflow_dispatch:
   push:
+    tags:
+      - '*.*.*'
     paths:
       - 'app/**'
       - 'bootstrap/**'
@@ -38,6 +40,8 @@ on:
       - 'package-lock.json'
       - 'vite.config.js'
 
+permissions:
+  contents: write
 concurrency:
   group: windows-nativephp-${{ github.ref }}
   cancel-in-progress: true
@@ -49,6 +53,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
+
+      - name: Validate release tag format
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if ($tag -notmatch '^\d{4}\.\d+\.\d+$') {
+            Write-Error "Invalid tag format '$tag'. Expected format: 2026.1.0"
+            exit 1
+          }
 
       - name: Setup PHP 8.3
         uses: shivammathur/setup-php@v2
@@ -135,3 +149,12 @@ jobs:
           name: nativephp-installer-with-serial-agent
           path: nativephp/electron/dist/Hlasovanie-*setup.exe
           if-no-files-found: error
+
+      - name: Publish installer to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: nativephp/electron/dist/Hlasovanie-*setup.exe
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

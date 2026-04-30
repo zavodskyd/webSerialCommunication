@@ -99,7 +99,8 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: serial-agent
+          workspaces: |
+            serial-agent -> target
 
       - name: Install composer dependencies
         run: composer install --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader

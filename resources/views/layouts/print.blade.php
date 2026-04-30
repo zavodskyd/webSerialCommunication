@@ -80,8 +80,8 @@
             exportPdfButton?.addEventListener('click', async () => {
                 const filename = `${normalizeFilename(printTitle)}.pdf`;
 
-                if (window.NativePHP?.printToPDF) {
-                    await window.NativePHP.printToPDF({
+                if (window.electron?.ipcRenderer) {
+                    await window.electron.ipcRenderer.invoke('print-to-pdf', {
                         filename,
                         landscape: true,
                         pageSize: 'A4',
@@ -91,9 +91,8 @@
                     return;
                 }
 
-                if (window.electron?.ipcRenderer) {
-                    await window.electron.ipcRenderer.invoke('print-to-pdf', {
-                        filename,
+                if (window.NativePHP?.printToPDF) {
+                    await window.NativePHP.printToPDF({
                         landscape: true,
                         pageSize: 'A4',
                         printBackground: true,

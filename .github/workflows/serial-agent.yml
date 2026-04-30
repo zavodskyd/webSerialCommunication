@@ -47,6 +47,13 @@ jobs:
     name: Build Win64 app with serial-agent.exe
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      NATIVEPHP_AZURE_ENDPOINT: ${{ secrets.NATIVEPHP_AZURE_ENDPOINT }}
+      NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME: ${{ secrets.NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME }}
+      NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME: ${{ secrets.NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v6
 
@@ -68,6 +75,24 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+
+      - name: Verify Azure signing configuration
+        shell: pwsh
+        run: |
+          $required = @(
+            'NATIVEPHP_AZURE_ENDPOINT',
+            'NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME',
+            'NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME',
+            'AZURE_TENANT_ID',
+            'AZURE_CLIENT_ID',
+            'AZURE_CLIENT_SECRET'
+          )
+
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing required GitHub secret/env for Windows code signing: $name"
+            }
+          }
 
       - name: Get composer cache directory
         id: composer-cache
@@ -130,7 +155,7 @@ jobs:
           $signature | Format-List
 
           if ($signature.Status -ne 'Valid') {
-            throw "serial-agent.exe must be signed before packaging. Status: $($signature.Status)"
+            throw "serial-agent.exe in NativePHP extras must be signed. Status: $($signature.Status)"
           }
 
       - name: Upload serial-agent executable

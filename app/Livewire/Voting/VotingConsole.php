@@ -181,7 +181,7 @@ class VotingConsole extends Component
 
         if (($payload['collectorEnabled'] ?? false) === true) {
             $this->startNativeSerialCollection();
-            $this->pauseQuestion();
+            $this->pauseQuestion(recalculateRemaining: false);
         }
     }
 
@@ -218,7 +218,7 @@ class VotingConsole extends Component
             return;
         }
 
-        $elapsed = $question->opened_at->diffInSeconds(now(), false);
+        $elapsed = $this->elapsedSecondsSince($question->opened_at);
         $this->remainingSeconds = max(0, $question->response_time_seconds - $elapsed);
 
         if ($this->remainingSeconds <= 0) {
@@ -318,7 +318,7 @@ class VotingConsole extends Component
         return $this->consoleStatePayload();
     }
 
-    public function pauseQuestion(): void
+    public function pauseQuestion(bool $recalculateRemaining = true): void
     {
         if (! $this->collectorEnabled) {
             return;
@@ -326,8 +326,8 @@ class VotingConsole extends Component
 
         $question = $this->currentQuestion();
 
-        if ($question->opened_at !== null) {
-            $elapsed = $question->opened_at->diffInSeconds(now(), false);
+        if ($recalculateRemaining && $this->timerRunning && $question->opened_at !== null) {
+            $elapsed = $this->elapsedSecondsSince($question->opened_at);
             $this->remainingSeconds = max(0, $question->response_time_seconds - $elapsed);
         }
 
@@ -356,7 +356,7 @@ class VotingConsole extends Component
 
         $question->update([
             'status' => 'live',
-            'opened_at' => now()->subSeconds($consumed),
+            'opened_at' => now()->startOfSecond()->subSeconds($consumed),
         ]);
 
         $this->timerRunning = true;
@@ -694,6 +694,11 @@ class VotingConsole extends Component
         }
 
         SerialHelperClient::call('start');
+    }
+
+    private function elapsedSecondsSince(\DateTimeInterface $startedAt): int
+    {
+        return max(0, now()->getTimestamp() - $startedAt->getTimestamp());
     }
 
     /**

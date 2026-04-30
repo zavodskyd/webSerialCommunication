@@ -56,6 +56,34 @@ test('start resumes a paused question without resetting the remaining time', fun
     Carbon::setTestNow();
 });
 
+test('start resumes a paused question without immediately skipping seconds', function () {
+    [, $voting] = createConsoleFixture();
+
+    Carbon::setTestNow(now()->startOfSecond()->addMilliseconds(750));
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+    $component->startQuestion();
+
+    Carbon::setTestNow(now()->addSeconds(18));
+    $component->pauseQuestion();
+
+    Carbon::setTestNow(now()->addSeconds(60));
+    $component->startQuestion();
+    $component->liveTick();
+
+    expect($component->timerRunning)->toBeTrue();
+    expect($component->collectorEnabled)->toBeTrue();
+    expect($component->remainingSeconds)->toBe(12);
+
+    Carbon::setTestNow(now()->addSecond());
+    $component->liveTick();
+
+    expect($component->remainingSeconds)->toBe(11);
+
+    Carbon::setTestNow();
+});
+
 test('helper driver: liveTick marks helper as unhealthy when not running', function () {
     config(['serial.driver' => 'node-helper']);
 
@@ -79,7 +107,11 @@ test('rust agent driver keeps collection running while paused and stops only on 
     [, $voting] = createConsoleFixture();
 
     $client = $this->mock(SerialAgentClient::class);
-    $client->shouldReceive('command')->once()->with('start')->andReturn(['ok' => true]);
+    $client->shouldReceive('command')->once()->with('start')->andReturnUsing(function (): array {
+        Carbon::setTestNow(now()->addSeconds(2));
+
+        return ['ok' => true];
+    });
     $client->shouldReceive('command')->once()->with('stop')->andReturn(['ok' => true]);
 
     $component = app(VotingConsole::class);

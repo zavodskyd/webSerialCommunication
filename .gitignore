@@ -21,3 +21,6 @@ yarn-error.log
 /.zed
 /nativephp/dist
 /extras/serial-agent/serial-agent.exe
+bootstrap/.DS_Store
+bootstrap/cache
+nativephp/electron/.DS_Store

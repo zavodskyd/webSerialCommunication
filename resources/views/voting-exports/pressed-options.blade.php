@@ -1,4 +1,10 @@
-@extends('layouts.print', ['title' => 'Stlačené možnosti - '.$voting->name])
+@extends('layouts.print', [
+    'title' => 'Stlačené možnosti - '.$voting->name,
+    'filename' => 'Stlacene moznosti - '.$voting->name,
+    'exportPdfUrl' => $exportPdfUrl ?? route('votings.exports.pressed-options.pdf', $voting),
+    'showPrintToolbar' => $showPrintToolbar ?? true,
+    'showPrintScript' => $showPrintScript ?? true,
+])
 
 @section('content')
     <main class="mx-auto max-w-7xl px-6 py-8 print:max-w-none print:px-0 print:py-0">

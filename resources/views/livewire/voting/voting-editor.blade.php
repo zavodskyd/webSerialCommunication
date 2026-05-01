@@ -325,10 +325,12 @@
                         <div class="grid gap-5 xl:grid-cols-[0.8fr,2fr,0.8fr,auto] xl:items-start">
                             <div>
                                 <label
-                                    class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Poradie</label>
-                                <input type="number" min="1"
-                                    wire:model.live.number="questionRows.{{ $index }}.order"
-                                    class="mt-2 w-1/2 rounded-2xl border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-900 focus:border-sky-500 focus:ring-sky-300">
+                                    class="text-xs font-semibold tracking-[0.2em] text-slate-700">Poradie</label>
+                                <div>
+                                    <input type="number" min="1"
+                                        wire:model.live.number="questionRows.{{ $index }}.order"
+                                        class="mt-2 w-1/2 rounded-2xl border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-900 focus:border-sky-500 focus:ring-sky-300">
+                                </div>
                             </div>
 
                             <div class="space-y-4">
@@ -339,11 +341,11 @@
                                 </div>
                             </div>
 
-                            <div>
+                            <div class="">
                                 <label class="text-sm font-medium text-slate-700">Čas</label>
                                 <div
                                     class="mt-2 flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3">
-                                    <input type="number" min="5" max="600"
+                                    <input type="number" min="1" max="600"
                                         wire:model.blur="questionRows.{{ $index }}.response_time_seconds"
                                         class="w-full border-0 p-0 text-slate-900 focus:ring-0">
                                     <span class="text-sm text-slate-500">s</span>

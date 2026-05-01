@@ -8,13 +8,20 @@
         @php($exportPdfUrl = $exportPdfUrl ?? null)
         @php($showPrintToolbar = $showPrintToolbar ?? true)
         @php($showPrintScript = $showPrintScript ?? true)
+        @php($inlineAppCss = $inlineAppCss ?? null)
         <title>{{ $printTitle }}</title>
         <base href="{{ rtrim(url('/'), '/') }}/">
 
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap" rel="stylesheet" />
+        @if ($inlineAppCss !== null)
+            <style>
+                {!! $inlineAppCss !!}
+            </style>
+        @else
+            <link rel="preconnect" href="https://fonts.bunny.net">
+            <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700&display=swap" rel="stylesheet" />
 
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
+            @vite(['resources/css/app.css', 'resources/js/app.js'])
+        @endif
 
         <style>
             @page {
@@ -54,7 +61,7 @@
                     </div>
 
                     <div class="flex flex-wrap items-center gap-3">
-                        <button type="button" id="export-pdf-button" class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700">
+                        <button type="button" id="export-pdf-button" class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:hover:bg-slate-400">
                             Exportovať PDF
                         </button>
 
@@ -84,14 +91,36 @@
                 };
 
                 const exportPdfButton = document.getElementById('export-pdf-button');
+                const exportPdfButtonLabel = exportPdfButton?.textContent?.trim() || 'Exportovať PDF';
+                let exportPdfInProgress = false;
+
+                const setExportPdfState = (isExporting) => {
+                    exportPdfInProgress = isExporting;
+
+                    if (! exportPdfButton) {
+                        return;
+                    }
+
+                    exportPdfButton.disabled = isExporting;
+                    exportPdfButton.textContent = isExporting ? 'Exportujem PDF...' : exportPdfButtonLabel;
+                    exportPdfButton.setAttribute('aria-busy', isExporting ? 'true' : 'false');
+                };
 
                 document.title = normalizeFilename(printTitle);
 
                 exportPdfButton?.addEventListener('click', async () => {
+                    if (exportPdfInProgress) {
+                        return;
+                    }
+
+                    setExportPdfState(true);
+
                     if (! exportPdfUrl || ! window.axios) {
                         const message = 'PDF export nie je v tomto prostredí dostupný. Použi "Tlačiť cez systém", alebo skontroluj NativePHP build.';
 
                         window.alert(message);
+
+                        setExportPdfState(false);
 
                         throw new Error(message);
                     }
@@ -104,6 +133,7 @@
                         });
 
                         if (response.data?.cancelled) {
+                            setExportPdfState(false);
                             return;
                         }
 
@@ -116,7 +146,11 @@
 
                         window.alert(message);
 
+                        setExportPdfState(false);
+
                         throw error;
+                    } finally {
+                        setExportPdfState(false);
                     }
                 });
 

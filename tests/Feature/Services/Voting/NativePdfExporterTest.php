@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Models\Voting;
 use App\Services\Voting\NativePdfExporter;
 use App\Services\Voting\NativePdfExportResult;
+use App\Support\PrintAssetResolver;
 use Native\Desktop\Dialog;
 use Native\Desktop\Facades\System;
 
@@ -53,4 +54,12 @@ test('results pdf route returns conflict outside nativephp runtime', function ()
         ->assertJson([
             'message' => 'PDF export je dostupný len v NativePHP desktop aplikácii.',
         ]);
+});
+
+test('print asset resolver returns compiled app css content when available', function () {
+    $css = app(PrintAssetResolver::class)->appCss();
+
+    expect($css)->toBeString();
+    expect($css)->not->toBe('');
+    expect($css)->toContain('box-sizing:border-box');
 });

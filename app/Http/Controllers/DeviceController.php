@@ -35,19 +35,19 @@ class DeviceController extends Controller
         // Odstránenie hlavičky
         $headers = array_shift($csvData);
 
+        Device::query()->delete();
+
         foreach ($csvData as $row) {
-            Device::updateOrCreate(
-                ['device_number' => $row[0]],
-                [
-                    'code_a' => $row[1],
-                    'code_b' => $row[2],
-                    'code_c' => $row[3],
-                    'code_d' => $row[4],
-                    'code_e' => $row[5],
-                    'code_f' => $row[6],
-                    'code_ruka' => $row[7],
-                ]
-            );
+            Device::create([
+                'device_number' => $this->normalizeImportedValue($row[0] ?? null),
+                'code_a' => $this->normalizeImportedValue($row[1] ?? null),
+                'code_b' => $this->normalizeImportedValue($row[2] ?? null),
+                'code_c' => $this->normalizeImportedValue($row[3] ?? null),
+                'code_d' => $this->normalizeImportedValue($row[4] ?? null),
+                'code_e' => $this->normalizeImportedValue($row[5] ?? null),
+                'code_f' => $this->normalizeImportedValue($row[6] ?? null),
+                'code_ruka' => $this->normalizeImportedValue($row[7] ?? null),
+            ]);
         }
 
         return response()->json(['message' => 'Import successful'], 200);

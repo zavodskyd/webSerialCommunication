@@ -11,7 +11,10 @@ use App\Livewire\Voting\VotingConsole;
 use App\Livewire\Voting\VotingEditor;
 use App\Livewire\Voting\VotingIndex;
 use App\Livewire\Voting\VotingPresentation;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 Route::redirect('/', '/votings');
 
@@ -34,9 +37,13 @@ Route::get('/votings/{voting}/presentation', VotingPresentation::class)->name('v
 Route::get('/votings/{voting}/presentation/{question}', VotingPresentation::class)->name('votings.presentation.question');
 Route::get('/votings/{voting}/logo', VotingLogoController::class)->name('votings.logo');
 Route::get('/votings/{voting}/exports/results', [VotingExportController::class, 'results'])->name('votings.exports.results');
-Route::get('/votings/{voting}/exports/results/pdf', [VotingExportController::class, 'resultsPdf'])->name('votings.exports.results.pdf');
+Route::get('/votings/{voting}/exports/results/pdf', [VotingExportController::class, 'resultsPdf'])
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, VerifyCsrfToken::class])
+    ->name('votings.exports.results.pdf');
 Route::get('/votings/{voting}/exports/pressed-options', [VotingExportController::class, 'pressedOptions'])->name('votings.exports.pressed-options');
-Route::get('/votings/{voting}/exports/pressed-options/pdf', [VotingExportController::class, 'pressedOptionsPdf'])->name('votings.exports.pressed-options.pdf');
+Route::get('/votings/{voting}/exports/pressed-options/pdf', [VotingExportController::class, 'pressedOptionsPdf'])
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, VerifyCsrfToken::class])
+    ->name('votings.exports.pressed-options.pdf');
 Route::get('/votings/{voting}/questions/{question}/events.csv', VoteEventsExportController::class)
     ->name('votings.questions.events-export');
 

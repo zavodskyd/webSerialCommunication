@@ -1,5 +1,10 @@
 <?php
 
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Route;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
+
 test('print layout uses a route-based native pdf export and keeps system print fallback separate', function () {
     $layout = file_get_contents(resource_path('views/layouts/print.blade.php'));
 
@@ -43,6 +48,18 @@ test('results and pressed-options exports pass their native pdf endpoints into t
         ->toContain("'showPrintScript' => \$showPrintScript ?? true");
 });
 
+test('native pdf export routes bypass session middleware', function () {
+    $resultsRoute = Route::getRoutes()->getByName('votings.exports.results.pdf');
+    $pressedOptionsRoute = Route::getRoutes()->getByName('votings.exports.pressed-options.pdf');
+
+    expect($resultsRoute?->excludedMiddleware())->toContain(StartSession::class);
+    expect($resultsRoute?->excludedMiddleware())->toContain(ShareErrorsFromSession::class);
+    expect($resultsRoute?->excludedMiddleware())->toContain(VerifyCsrfToken::class);
+    expect($pressedOptionsRoute?->excludedMiddleware())->toContain(StartSession::class);
+    expect($pressedOptionsRoute?->excludedMiddleware())->toContain(ShareErrorsFromSession::class);
+    expect($pressedOptionsRoute?->excludedMiddleware())->toContain(VerifyCsrfToken::class);
+});
+
 test('native electron pdf export keeps save dialog filename and landscape defaults', function () {
     $mainProcess = file_get_contents(base_path('nativephp/electron/src/main/index.js'));
     $systemApi = file_get_contents(base_path('nativephp/electron/electron-plugin/src/server/api/system.ts'));
@@ -55,6 +72,12 @@ test('native electron pdf export keeps save dialog filename and landscape defaul
         ->toContain('printBackground: options.printBackground ?? true,');
 
     expect($systemApi)
-        ->toContain('data:text/html;charset=UTF-8;base64,${html}')
+        ->toContain('const {html, htmlPath, settings} = req.body;')
+        ->toContain("if (typeof htmlPath === 'string' && htmlPath.trim() !== '') {")
+        ->toContain("throw new Error('Missing htmlPath or html payload for PDF export.');")
+        ->toContain('await printWindow.loadFile(resolvedHtmlPath);')
+        ->toContain('document.fonts.ready.then(afterPaint).catch(afterPaint);')
+        ->toContain('if (tempDirectory !== null) {')
+        ->toContain('rmSync(tempDirectory, {recursive: true, force: true});')
         ->not->toContain('data:text/html;base64;charset=UTF-8,${html}');
 });

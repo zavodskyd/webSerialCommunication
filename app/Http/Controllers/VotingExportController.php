@@ -11,6 +11,7 @@ use App\Support\PrintAssetResolver;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 class VotingExportController extends Controller
@@ -108,16 +109,27 @@ class VotingExportController extends Controller
         array $data,
         string $filename,
     ): JsonResponse {
+        Log::info('VotingExportController: native pdf export requested', [
+            'view' => $view,
+            'filename' => $filename,
+            'native_running' => config('nativephp-internal.running'),
+        ]);
+
         if (! config('nativephp-internal.running')) {
             return response()->json([
                 'message' => 'PDF export je dostupný len v NativePHP desktop aplikácii.',
             ], Response::HTTP_CONFLICT);
         }
 
-        $result = $exporter->export(
-            html: view($view, $data)->render(),
-            filename: $filename,
-        );
+        $html = view($view, $data)->render();
+
+        Log::info('VotingExportController: native pdf export rendered html', [
+            'view' => $view,
+            'filename' => $filename,
+            'html_length' => strlen($html),
+        ]);
+
+        $result = $exporter->export(html: $html, filename: $filename);
 
         return response()->json($result->toArray());
     }

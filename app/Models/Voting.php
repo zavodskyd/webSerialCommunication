@@ -27,6 +27,7 @@ class Voting extends Model
         'runtime_results_visible',
         'started_at',
         'finished_at',
+        'archived_at',
     ];
 
     /**
@@ -43,6 +44,7 @@ class Voting extends Model
             'runtime_results_visible' => 'boolean',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'archived_at' => 'datetime',
         ];
     }
 

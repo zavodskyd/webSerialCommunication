@@ -15,6 +15,7 @@ test('it stores the voting domain model with per-question response times', funct
         'title' => 'Hlasovanie delegátov',
         'header_text' => 'DoubleTree by Hilton, Bratislava',
         'default_response_time_seconds' => 45,
+        'archived_at' => now(),
     ]);
 
     $question = VotingQuestion::query()->create([
@@ -36,6 +37,7 @@ test('it stores the voting domain model with per-question response times', funct
     expect($voting->questions)->toHaveCount(1);
     expect($question->response_time_seconds)->toBe(20);
     expect($option->question->is($question))->toBeTrue();
+    expect($voting->archived_at)->not->toBeNull();
 });
 
 test('it allows only one attendee record per device in a voting', function () {

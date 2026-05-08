@@ -32,9 +32,19 @@
         </div>
 
         <div class="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200/80">
-            <div class="flex items-center gap-4">
-                <h2 class="inline-block whitespace-nowrap text-2xl font-semibold text-slate-900">Pripravené hlasovania</h2>
-                <p class="inline-block whitespace-nowrap text-3xl font-semibold text-slate-900">{{ $votings->count() }}</p>
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex items-center gap-4">
+                    <h2 class="inline-block whitespace-nowrap text-2xl font-semibold text-slate-900">Pripravené hlasovania</h2>
+                    <p class="inline-block whitespace-nowrap text-3xl font-semibold text-slate-900">{{ $votings->count() }}</p>
+                </div>
+
+                <button
+                    type="button"
+                    wire:click="toggleShowAll"
+                    class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                >
+                    {{ $showAll ? 'Len aktívne' : 'Všetky' }}
+                </button>
             </div>
 
             <div class="mt-6 space-y-4">
@@ -44,9 +54,11 @@
                             <div>
                                 <div class="flex items-center gap-3">
                                     <h3 class="text-xl font-semibold text-slate-900">{{ $voting->name }}</h3>
-                                    <span class="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-white">
-                                        {{ $voting->status }}
-                                    </span>
+                                    @if ($voting->archived_at)
+                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-amber-800">
+                                            Archivované
+                                        </span>
+                                    @endif
                                 </div>
                                 <p class="mt-2 text-sm text-slate-500">
                                     {{ $voting->title ?: 'Bez nadpisu hlasovania' }}
@@ -109,11 +121,16 @@
                             <button type="button" wire:click="copyVoting({{ $voting->id }})" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100">
                                 Kopírovať
                             </button>
+                            @if (! $voting->archived_at)
+                                <button type="button" wire:click="archiveVoting({{ $voting->id }})" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100">
+                                    Archivovať
+                                </button>
+                            @endif
                         </div>
                     </div>
                 @empty
                     <div class="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-slate-500">
-                        Zatiaľ tu nie je žiadne hlasovanie. Vytvor prvé v hornej časti stránky.
+                        {{ $showAll ? 'Zatiaľ tu nie je žiadne hlasovanie.' : 'Zatiaľ tu nie je žiadne aktívne hlasovanie. Klikni na Všetky pre zobrazenie archívu.' }}
                     </div>
                 @endforelse
             </div>

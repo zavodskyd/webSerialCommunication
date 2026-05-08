@@ -1,4 +1,19 @@
 <div class="min-h-screen bg-slate-100">
+    @if (session('status'))
+        <div data-floating-status class="pointer-events-none fixed left-1/2 top-4 z-[100] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2">
+            <div class="pointer-events-auto flex items-start justify-between gap-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50/95 px-5 py-4 text-sm font-medium text-emerald-900 shadow-xl shadow-emerald-900/10 backdrop-blur">
+                <span role="status">{{ session('status') }}</span>
+                <button
+                    type="button"
+                    onclick="this.closest('[data-floating-status]').remove()"
+                    class="shrink-0 rounded-full border border-emerald-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-800 transition hover:bg-white"
+                >
+                    Zavrieť
+                </button>
+            </div>
+        </div>
+    @endif
+
     <div class="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -13,10 +28,6 @@
 
             <div class="rounded-[1.5rem] bg-white px-5 py-4 text-sm text-slate-600 shadow-sm ring-1 ring-slate-200">
                 <div class="flex items-center gap-3">
-                    <span
-                        class="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-white">
-                        {{ $voting->status }}
-                    </span>
                     <span>{{ count($questionRows) }} otázok</span>
                 </div>
                 <a href="{{ route('votings.presentation', $voting) }}" target="_blank"
@@ -31,13 +42,6 @@
                 @endif
             </div>
         </div>
-
-        @if (session('status'))
-            <div
-                class="rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
-                {{ session('status') }}
-            </div>
-        @endif
 
         <div class="grid gap-8 xl:grid-cols-[1.15fr,0.85fr]">
             <section class="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200/80">

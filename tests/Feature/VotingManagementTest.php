@@ -123,6 +123,41 @@ test('user can copy a prepared voting with questions options and device weights'
         ->value('weight'))->toBe(6.0);
 });
 
+test('archived votings are hidden by default and shown only after enabling all filter', function () {
+    Voting::query()->create([
+        'name' => 'Aktívne hlasovanie',
+    ]);
+
+    Voting::query()->create([
+        'name' => 'Archivované hlasovanie',
+        'archived_at' => now(),
+    ]);
+
+    Livewire::test(VotingIndex::class)
+        ->assertSee('Aktívne hlasovanie')
+        ->assertDontSee('Archivované hlasovanie')
+        ->call('toggleShowAll')
+        ->assertSet('showAll', true)
+        ->assertSee('Aktívne hlasovanie')
+        ->assertSee('Archivované hlasovanie');
+});
+
+test('user can archive voting from the index', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Hlasovanie na archiváciu',
+    ]);
+
+    Livewire::test(VotingIndex::class)
+        ->assertSee('Hlasovanie na archiváciu')
+        ->call('archiveVoting', $voting->id)
+        ->assertDontSee('Hlasovanie na archiváciu')
+        ->call('toggleShowAll')
+        ->assertSee('Hlasovanie na archiváciu')
+        ->assertSee('Archivované');
+
+    expect($voting->fresh()->archived_at)->not->toBeNull();
+});
+
 test('user can update voting details and generate questions', function () {
     Storage::fake('public');
 

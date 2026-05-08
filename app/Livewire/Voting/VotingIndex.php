@@ -15,6 +15,8 @@ class VotingIndex extends Component
     #[Validate('required|string|min:3|max:255')]
     public string $name = '';
 
+    public bool $showAll = false;
+
     public function createVoting(): void
     {
         $validated = $this->validate();
@@ -83,14 +85,35 @@ class VotingIndex extends Component
         $this->redirectRoute('votings.edit', ['voting' => $copiedVoting]);
     }
 
+    public function toggleShowAll(): void
+    {
+        $this->showAll = ! $this->showAll;
+    }
+
+    public function archiveVoting(int $votingId): void
+    {
+        Voting::query()
+            ->whereKey($votingId)
+            ->whereNull('archived_at')
+            ->update([
+                'archived_at' => now(),
+            ]);
+    }
+
     public function render(): View
     {
+        $votingsQuery = Voting::query()
+            ->withCount('questions')
+            ->withCount([
+                'questions as closed_questions_count' => fn ($query) => $query->where('status', 'closed'),
+            ]);
+
+        if (! $this->showAll) {
+            $votingsQuery->whereNull('archived_at');
+        }
+
         return view('livewire.voting.voting-index', [
-            'votings' => Voting::query()
-                ->withCount('questions')
-                ->withCount([
-                    'questions as closed_questions_count' => fn ($query) => $query->where('status', 'closed'),
-                ])
+            'votings' => $votingsQuery
                 ->latest()
                 ->get(),
         ])->layout('layouts.app')->title('Hlasovania');

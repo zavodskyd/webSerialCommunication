@@ -27,7 +27,7 @@ new class extends Component
                 <x-dropdown align="right" width="48">
                     <x-slot name="trigger">
                         <button class="inline-flex items-center px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out bg-white border border-transparent rounded-md dark:text-gray-400 dark:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none">
-                            <span>{{ __('Menu') }}</span>
+                            <span>{{ __('Nastavenia') }}</span>
 
                             <span class="ms-1">
                                 <svg class="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
@@ -53,6 +53,10 @@ new class extends Component
                         <x-dropdown-link :href="route('devices.index')" wire:navigate>
                             {{ __('Zariadenia') }}
                         </x-dropdown-link>
+
+                        <x-dropdown-link :href="route('settings.backup.index')" wire:navigate>
+                            {{ __('Záloha a obnova') }}
+                        </x-dropdown-link>
                     </x-slot>
                 </x-dropdown>
             </div>
@@ -77,7 +81,7 @@ new class extends Component
 
         <div class="pt-4 pb-1 border-t border-gray-200 dark:border-gray-600">
             <div class="px-4">
-                <div class="text-base font-medium text-gray-800 dark:text-gray-200">{{ __('Menu') }}</div>
+                <div class="text-base font-medium text-gray-800 dark:text-gray-200">{{ __('Nastavenia') }}</div>
             </div>
 
             <div class="mt-3 space-y-1">
@@ -95,6 +99,10 @@ new class extends Component
 
                 <x-responsive-nav-link :href="route('devices.index')" wire:navigate>
                     {{ __('Zariadenia') }}
+                </x-responsive-nav-link>
+
+                <x-responsive-nav-link :href="route('settings.backup.index')" wire:navigate>
+                    {{ __('Záloha a obnova') }}
                 </x-responsive-nav-link>
             </div>
         </div>

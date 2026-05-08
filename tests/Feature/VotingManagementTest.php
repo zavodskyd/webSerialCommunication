@@ -356,6 +356,21 @@ test('user can bulk assign vote weights by device number range', function () {
         ->exists())->toBeFalse();
 });
 
+test('voting editor orders device weights by numeric device number', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
+    ]);
+
+    createVotingDevice('1');
+    createVotingDevice('10');
+    createVotingDevice('2');
+
+    Livewire::test(VotingEditor::class, ['voting' => $voting])
+        ->assertSet('deviceWeightRows.0.device_number', '1')
+        ->assertSet('deviceWeightRows.1.device_number', '2')
+        ->assertSet('deviceWeightRows.2.device_number', '10');
+});
+
 test('user can export and import device vote weights', function () {
     $voting = Voting::query()->create([
         'name' => 'Valné zhromaždenie',

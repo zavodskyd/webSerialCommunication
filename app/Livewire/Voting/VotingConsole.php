@@ -76,7 +76,7 @@ class VotingConsole extends Component
     {
         $this->voting = $voting;
         $this->devices = Device::query()
-            ->orderBy('device_number')
+            ->ordered()
             ->get();
 
         $currentQuestion = $question;

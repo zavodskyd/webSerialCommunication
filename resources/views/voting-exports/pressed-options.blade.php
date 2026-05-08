@@ -25,7 +25,7 @@
                 </thead>
                 <tbody>
                     @forelse ($questions as $question)
-                        @forelse ($question->votes->sortBy(fn ($vote) => $vote->device?->device_number ?? '') as $vote)
+                        @forelse ($question->votes->sortBy(fn ($vote) => \App\Models\Device::sortKeyForDeviceNumber($vote->device?->device_number)) as $vote)
                             <tr class="border-b border-slate-200">
                                 <td class="py-3 pr-4 font-semibold text-slate-900">{{ $question->text }}</td>
                                 <td class="px-4 py-3 text-slate-700">{{ $vote->device?->device_number ?? 'Neznáme' }}</td>

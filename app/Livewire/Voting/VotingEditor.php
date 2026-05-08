@@ -358,7 +358,7 @@ class VotingEditor extends Component
             ->pluck('weight', 'device_id');
 
         $this->deviceWeightRows = Device::query()
-            ->orderBy('device_number')
+            ->ordered()
             ->get()
             ->map(fn (Device $device): array => [
                 'id' => $device->id,

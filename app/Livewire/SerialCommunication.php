@@ -18,7 +18,7 @@ class SerialCommunication extends Component
     public function mount(): void
     {
         $this->devices = Device::query()
-            ->orderBy('device_number')
+            ->ordered()
             ->get();
     }
 

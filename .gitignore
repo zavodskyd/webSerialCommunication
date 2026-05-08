@@ -24,3 +24,4 @@ yarn-error.log
 bootstrap/.DS_Store
 bootstrap/cache
 nativephp/electron/.DS_Store
+.gitnexus

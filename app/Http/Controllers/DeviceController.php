@@ -32,23 +32,30 @@ class DeviceController extends Controller
         $file = $request->file('csv_file');
         $csvData = array_map('str_getcsv', file($file->getPathname()));
 
-        // Odstránenie hlavičky
-        $headers = array_shift($csvData);
+        array_shift($csvData);
 
         Device::query()->delete();
 
-        foreach ($csvData as $row) {
-            Device::create([
-                'device_number' => $this->normalizeImportedValue($row[0] ?? null),
-                'code_a' => $this->normalizeImportedValue($row[1] ?? null),
-                'code_b' => $this->normalizeImportedValue($row[2] ?? null),
-                'code_c' => $this->normalizeImportedValue($row[3] ?? null),
-                'code_d' => $this->normalizeImportedValue($row[4] ?? null),
-                'code_e' => $this->normalizeImportedValue($row[5] ?? null),
-                'code_f' => $this->normalizeImportedValue($row[6] ?? null),
-                'code_ruka' => $this->normalizeImportedValue($row[7] ?? null),
-            ]);
-        }
+        collect($csvData)
+            ->filter(function (array $row): bool {
+                return collect($row)
+                    ->contains(fn (mixed $value): bool => $this->normalizeImportedValue($value) !== '');
+            })
+            ->sortBy(fn (array $row): string => Device::sortKeyForDeviceNumber(
+                $this->normalizeImportedValue($row[0] ?? null),
+            ))
+            ->each(function (array $row): void {
+                Device::create([
+                    'device_number' => $this->normalizeImportedValue($row[0] ?? null),
+                    'code_a' => $this->normalizeImportedValue($row[1] ?? null),
+                    'code_b' => $this->normalizeImportedValue($row[2] ?? null),
+                    'code_c' => $this->normalizeImportedValue($row[3] ?? null),
+                    'code_d' => $this->normalizeImportedValue($row[4] ?? null),
+                    'code_e' => $this->normalizeImportedValue($row[5] ?? null),
+                    'code_f' => $this->normalizeImportedValue($row[6] ?? null),
+                    'code_ruka' => $this->normalizeImportedValue($row[7] ?? null),
+                ]);
+            });
 
         return response()->json(['message' => 'Import successful'], 200);
     }
@@ -102,7 +109,7 @@ class DeviceController extends Controller
     public function showDevices(): View
     {
         $devices = Device::query()
-            ->orderBy('device_number')
+            ->ordered()
             ->paginate(24);
 
         $incompleteDevicesCount = Device::query()
@@ -124,26 +131,30 @@ class DeviceController extends Controller
 
     private function storeExternalDevices(Collection $devices): void
     {
-        foreach ($devices as $device) {
-            $deviceNumber = $this->normalizeImportedValue($device->UniqueId);
+        $devices
+            ->sortBy(fn (object $device): string => Device::sortKeyForDeviceNumber(
+                $this->normalizeImportedValue($device->UniqueId ?? null),
+            ))
+            ->each(function (object $device): void {
+                $deviceNumber = $this->normalizeImportedValue($device->UniqueId);
 
-            if ($deviceNumber === '') {
-                continue;
-            }
+                if ($deviceNumber === '') {
+                    return;
+                }
 
-            Device::updateOrCreate(
-                ['device_number' => $deviceNumber],
-                [
-                    'code_a' => $this->normalizeImportedValue($device->A_Code),
-                    'code_b' => $this->normalizeImportedValue($device->B_Code),
-                    'code_c' => $this->normalizeImportedValue($device->C_Code),
-                    'code_d' => $this->normalizeImportedValue($device->D_Code),
-                    'code_e' => $this->normalizeImportedValue($device->E_Code),
-                    'code_f' => $this->normalizeImportedValue($device->F_Code),
-                    'code_ruka' => $this->normalizeImportedValue($device->Ruka_Code),
-                ]
-            );
-        }
+                Device::updateOrCreate(
+                    ['device_number' => $deviceNumber],
+                    [
+                        'code_a' => $this->normalizeImportedValue($device->A_Code),
+                        'code_b' => $this->normalizeImportedValue($device->B_Code),
+                        'code_c' => $this->normalizeImportedValue($device->C_Code),
+                        'code_d' => $this->normalizeImportedValue($device->D_Code),
+                        'code_e' => $this->normalizeImportedValue($device->E_Code),
+                        'code_f' => $this->normalizeImportedValue($device->F_Code),
+                        'code_ruka' => $this->normalizeImportedValue($device->Ruka_Code),
+                    ]
+                );
+            });
     }
 
     private function normalizeImportedValue(mixed $value): string

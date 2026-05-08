@@ -54,6 +54,23 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Resolve app version
+        id: app-version
+        shell: pwsh
+        run: |
+          if ('${{ github.ref }}'.StartsWith('refs/tags/')) {
+            $version = '${{ github.ref_name }}'
+          }
+          elseif ('${{ github.event_name }}' -eq 'pull_request') {
+            $version = '0.0.${{ github.run_number }}-pr.${{ github.event.pull_request.number }}'
+          }
+          else {
+            $version = '0.0.${{ github.run_number }}-ci'
+          }
+
+          "value=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Resolved app version: $version"
+
       - name: Validate release tag format
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
@@ -113,11 +130,34 @@ jobs:
         run: |
           Copy-Item .env.example .env
           php artisan key:generate --no-interaction
-          (Get-Content .env) `
+          $envContent = Get-Content .env
+          $envContent = $envContent `
             -replace '^APP_ENV=.*', 'APP_ENV=production' `
             -replace '^APP_DEBUG=.*', 'APP_DEBUG=false' `
-            -replace '^SERIAL_DRIVER=.*', 'SERIAL_DRIVER=rust-agent' `
-            | Set-Content .env
+            -replace '^SERIAL_DRIVER=.*', 'SERIAL_DRIVER=rust-agent'
+
+          if ($envContent -match '^NATIVEPHP_APP_VERSION=.*') {
+            $envContent = $envContent -replace '^NATIVEPHP_APP_VERSION=.*', 'NATIVEPHP_APP_VERSION=${{ steps.app-version.outputs.value }}'
+          }
+          else {
+            $envContent += 'NATIVEPHP_APP_VERSION=${{ steps.app-version.outputs.value }}'
+          }
+
+          $envContent | Set-Content .env
+
+      - name: Verify resolved app version
+        shell: pwsh
+        run: |
+          Get-Content .env | Select-String '^NATIVEPHP_APP_VERSION='
+          if ('${{ github.ref }}'.StartsWith('refs/tags/')) {
+            $expected = 'NATIVEPHP_APP_VERSION=${{ github.ref_name }}'
+            $actual = Get-Content .env | Select-String '^NATIVEPHP_APP_VERSION=' | ForEach-Object { $_.Line }
+
+            if ($actual -ne $expected) {
+              Write-Error "Expected '$expected' but found '$actual'"
+              exit 1
+            }
+          }
 
       - name: Test Rust agent
         run: cargo test --manifest-path serial-agent/Cargo.toml --locked

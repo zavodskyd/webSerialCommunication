@@ -1,4 +1,6 @@
 
+sandbox_mode = "workspace-write"
+approval_policy = "on-failure"
 [mcp_servers.laravel-boost.tools.search-docs]
 approval_mode = "approve"
 
@@ -6,3 +8,6 @@ approval_mode = "approve"
 command = "php"
 args = ["artisan", "boost:mcp"]
 cwd = "/Users/zavodskyd/Code/webs/serial-communication"
+
+[sandbox_workspace_write]
+network_access = true

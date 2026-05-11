@@ -119,6 +119,11 @@ jobs:
           workspaces: |
             serial-agent -> target
 
+      - name: Ensure bootstrap cache directory exists
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force bootstrap/cache | Out-Null
+
       - name: Install composer dependencies
         run: composer install --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader
 

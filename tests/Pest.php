@@ -48,3 +48,22 @@ function something()
 {
     // ..
 }
+
+function qomoFrameFor(int $deviceNumber, string $buttonName): string
+{
+    $buttonPrefixes = [
+        'A' => 0x80,
+        'B' => 0x90,
+        'C' => 0xA0,
+        'D' => 0xB0,
+        'E' => 0xC0,
+        'F' => 0xD0,
+        'Ruka' => 0xE0,
+    ];
+
+    $byte1 = 0x20 + intdiv($deviceNumber, 16);
+    $byte2 = $buttonPrefixes[$buttonName] | ($deviceNumber % 16);
+    $byte3 = $byte1 ^ $byte2;
+
+    return sprintf('%02x%02x%02x', $byte1, $byte2, $byte3);
+}

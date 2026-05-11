@@ -17,7 +17,7 @@ test('pause keeps collector active and still accepts votes', function () {
     $component->mount($voting);
     $component->startQuestion();
     $component->pauseQuestion();
-    $response = $component->recordVoteFromCode($device->code_a);
+    $response = $component->recordVoteFromCode(qomoFrameFor(1, 'A'));
 
     expect($component->timerRunning)->toBeFalse();
     expect($component->collectorEnabled)->toBeTrue();
@@ -256,7 +256,7 @@ test('stale native vote requests are accepted once the question is live in runti
 
     expect($staleComponent->collectorEnabled)->toBeFalse();
 
-    $response = $staleComponent->recordVoteFromCode($device->code_a);
+    $response = $staleComponent->recordVoteFromCode(qomoFrameFor(1, 'A'));
 
     expect($response)->toMatchArray([
         'accepted' => true,
@@ -389,7 +389,7 @@ test('device with zero vote weight is ignored in voting results', function () {
     $component = app(VotingConsole::class);
     $component->mount($voting);
     $component->startQuestion();
-    $response = $component->recordVoteFromCode($device->code_a);
+    $response = $component->recordVoteFromCode(qomoFrameFor(1, 'A'));
 
     expect($response)->toMatchArray([
         'accepted' => false,
@@ -478,14 +478,14 @@ test('starting the same closed question again overwrites prior finished results'
     $component = app(VotingConsole::class);
     $component->mount($voting);
     $component->startQuestion();
-    $component->recordVoteFromCode($device->code_a);
+    $component->recordVoteFromCode(qomoFrameFor(1, 'A'));
     $component->finishQuestion(0);
 
     expect(Vote::query()->count())->toBe(1);
     expect(Vote::query()->first()->option_key)->toBe('A');
 
     $component->startQuestion();
-    $component->recordVoteFromCode($device->code_b);
+    $component->recordVoteFromCode(qomoFrameFor(1, 'B'));
     $component->finishQuestion(0);
 
     expect(Vote::query()->count())->toBe(1);

@@ -20,7 +20,7 @@ test('it returns null when no voting is active', function () {
 test('it records rust-agent frames into the active voting question', function () {
     [$voting, $device] = createSerialAgentFrameFixture();
 
-    $result = app(SerialAgentFrameHandler::class)->handle($device->code_a);
+    $result = app(SerialAgentFrameHandler::class)->handle(qomoFrameFor(1, 'A'));
 
     expect($result)->not->toBeNull();
     expect($result->accepted)->toBeTrue();
@@ -32,7 +32,7 @@ test('it records rust-agent frames into the active voting question', function ()
     expect($event->source)->toBe('rust-agent');
     expect($event->voting_id)->toBe($voting->id);
     expect($event->accepted)->toBeTrue();
-    expect($event->raw_hex)->toBe($device->code_a);
+    expect($event->raw_hex)->toBe(qomoFrameFor(1, 'A'));
 });
 
 test('it routes frames to the voting with active collection', function () {
@@ -59,7 +59,7 @@ test('it routes frames to the voting with active collection', function () {
         'runtime_results_visible' => false,
     ])->save();
 
-    $result = app(SerialAgentFrameHandler::class)->handle($device->code_a);
+    $result = app(SerialAgentFrameHandler::class)->handle(qomoFrameFor(1, 'A'));
 
     expect($result)->not->toBeNull();
     expect($result->accepted)->toBeTrue();

@@ -62,7 +62,7 @@ test('it accepts a valid frame and returns the recording result', function () {
     $response = $this
         ->withHeader('X-Internal-Token', $token)
         ->postJson(route('internal.serial-frame'), [
-            'hex' => $device->code_a,
+            'hex' => qomoFrameFor(1, 'A'),
             'received_at' => '2026-04-28T13:42:11.123Z',
         ]);
 
@@ -81,7 +81,7 @@ test('it accepts a valid frame and returns the recording result', function () {
     expect($event->source)->toBe('node-helper');
     expect($event->voting_id)->toBe($voting->id);
     expect($event->accepted)->toBeTrue();
-    expect($event->raw_hex)->toBe($device->code_a);
+    expect($event->raw_hex)->toBe(qomoFrameFor(1, 'A'));
 });
 
 test('it returns accepted=false when no voting is active', function () {

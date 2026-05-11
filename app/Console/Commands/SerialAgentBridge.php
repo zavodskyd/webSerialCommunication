@@ -7,6 +7,7 @@ use Amp\Websocket\Client\WebsocketHandshake;
 use App\Services\SerialAgent\SerialAgentFrameHandler;
 use App\Support\SerialAgentFiles;
 use App\Support\SerialAgentStatus;
+use App\Support\SerialAgentTestMonitor;
 use App\Support\SerialHelperTokens;
 use Illuminate\Console\Command;
 use Throwable;
@@ -20,13 +21,13 @@ class SerialAgentBridge extends Command
 
     protected $description = 'Maintain the Laravel WebSocket bridge to the local Rust serial agent';
 
-    public function handle(SerialAgentFrameHandler $handler): int
+    public function handle(SerialAgentFrameHandler $handler, SerialAgentTestMonitor $monitor): int
     {
         $this->info('Starting serial-agent bridge.');
 
         while (true) {
             try {
-                $this->runBridge($handler);
+                $this->runBridge($handler, $monitor);
             } catch (Throwable $exception) {
                 $this->warn('serial-agent bridge disconnected: '.$exception->getMessage());
             }
@@ -35,7 +36,7 @@ class SerialAgentBridge extends Command
         }
     }
 
-    private function runBridge(SerialAgentFrameHandler $handler): void
+    private function runBridge(SerialAgentFrameHandler $handler, SerialAgentTestMonitor $monitor): void
     {
         $port = $this->waitForPort();
 
@@ -67,7 +68,7 @@ class SerialAgentBridge extends Command
             }
 
             match ($payload['type'] ?? null) {
-                'frame' => $this->handleFrame($payload, $handler, $connection),
+                'frame' => $this->handleFrame($payload, $handler, $monitor, $connection),
                 'status' => $this->handleStatus($payload),
                 default => null,
             };
@@ -86,7 +87,7 @@ class SerialAgentBridge extends Command
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function handleFrame(array $payload, SerialAgentFrameHandler $handler, mixed $connection): void
+    private function handleFrame(array $payload, SerialAgentFrameHandler $handler, SerialAgentTestMonitor $monitor, mixed $connection): void
     {
         $id = (string) ($payload['id'] ?? '');
         $hex = (string) ($payload['hex'] ?? '');
@@ -95,6 +96,7 @@ class SerialAgentBridge extends Command
             return;
         }
 
+        $monitor->recordFrame($hex);
         $handler->handle($hex);
 
         $connection->sendText(json_encode([

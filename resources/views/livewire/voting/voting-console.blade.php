@@ -246,8 +246,6 @@
         timerRunning: @js($timerRunning),
         remainingSeconds: @js($remainingSeconds),
         resultsVisible: @js($resultsVisible),
-        codeLookup: @js($codeLookup),
-        codePrefixes: @js($codePrefixes),
     };
 
     if (window[runtimeKey]) {
@@ -263,8 +261,6 @@
         timerRunning: initialConsoleState.timerRunning,
         remainingSeconds: initialConsoleState.remainingSeconds,
         resultsVisible: initialConsoleState.resultsVisible,
-        codeLookup: initialConsoleState.codeLookup,
-        codePrefixes: initialConsoleState.codePrefixes,
         baudRate: 28800,
         dataBits: 8,
         parity: 'none',
@@ -393,20 +389,17 @@
         const lastDevice = element('[data-last-device]');
         const lastButton = element('[data-last-button]');
         const lastVoteMessage = element('[data-last-vote-message]');
-        const resolved = state.codeLookup[hexData] || null;
 
         if (lastDevice) {
-            lastDevice.textContent = resolved?.deviceNumber || '—';
+            lastDevice.textContent = '—';
         }
 
         if (lastButton) {
-            lastButton.textContent = resolved?.buttonName || '—';
+            lastButton.textContent = '—';
         }
 
         if (lastVoteMessage) {
-            lastVoteMessage.textContent = resolved
-                ? `Prijatý signál ${resolved.deviceNumber} / ${resolved.buttonName}, čaká na aktiváciu hlasovania.`
-                : 'Prijatý signál, čaká na aktiváciu hlasovania.';
+            lastVoteMessage.textContent = `Prijatý signál ${hexData}, čaká na aktiváciu hlasovania.`;
         }
     };
 
@@ -465,14 +458,6 @@
     const attach = (wire, detail) => {
         componentWire = wire;
         consoleRoot = componentWire.$el;
-
-        if (detail.codeLookup) {
-            state.codeLookup = detail.codeLookup;
-        }
-
-        if (detail.codePrefixes) {
-            state.codePrefixes = detail.codePrefixes;
-        }
 
         applyConsoleState(detail);
         renderConsoleState();
@@ -745,7 +730,7 @@
             const frame = state.incomingBytes.slice(0, state.messageByteLength);
             const hexData = byteArrayToHex(frame);
 
-            if (!state.codeLookup[hexData]) {
+            if (!isValidVoteFrame(frame)) {
                 resyncIncomingBytes();
                 continue;
             }
@@ -788,11 +773,8 @@
             return;
         }
 
-        const frame = state.incomingBytes.slice(0, state.messageByteLength);
-        const oneBytePrefix = byteArrayToHex(frame.slice(0, 1));
-        const twoBytePrefix = byteArrayToHex(frame.slice(0, 2));
-        const couldBeStartOfKnownFrame = state.codePrefixes.oneByte.includes(oneBytePrefix)
-            || state.codePrefixes.twoBytes.includes(twoBytePrefix);
+        const [byte1, byte2] = state.incomingBytes;
+        const couldBeStartOfKnownFrame = byte1 >= 0x20 && isKnownButtonPrefix(byte2);
 
         state.incomingBytes.shift();
 
@@ -824,6 +806,17 @@
     const byteArrayToHex = (bytes) => bytes
         .map((byte) => byte.toString(16).padStart(2, '0'))
         .join('');
+
+    const isKnownButtonPrefix = (byte) => [0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0, 0xE0]
+        .includes(byte & 0xF0);
+
+    const isValidVoteFrame = (frame) => {
+        const [byte1, byte2, byte3] = frame;
+
+        return byte1 >= 0x20
+            && isKnownButtonPrefix(byte2)
+            && ((byte1 ^ byte2) === byte3);
+    };
 
     const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 

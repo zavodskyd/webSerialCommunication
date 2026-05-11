@@ -9,10 +9,13 @@ use App\Models\VoteEvent;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
 use App\Models\VotingQuestion;
+use App\Support\QomoHexFrameDecoder;
 use InvalidArgumentException;
 
 class VoteRecorder
 {
+    public function __construct(private readonly QomoHexFrameDecoder $frameDecoder) {}
+
     /**
      * Resolve a hex code to a vote, validate, and persist. Pure service —
      * no Livewire dependency, no UI state. Used by both:
@@ -63,9 +66,9 @@ class VoteRecorder
             );
         }
 
-        $device = $this->resolveDevice($code);
+        $decodedFrame = $this->frameDecoder->decode($code);
 
-        if ($device === null) {
+        if ($decodedFrame === null) {
             return new VoteRecordingResult(
                 accepted: false,
                 message: 'Kód '.$code.' sa nenašiel.',
@@ -76,12 +79,25 @@ class VoteRecorder
             );
         }
 
-        $buttonName = $device->resolveButtonName($code);
+        $device = $this->resolveDevice($decodedFrame['deviceNumber']);
 
-        if (! in_array($buttonName, ['A', 'B', 'C', 'D', 'E', 'F'], true)) {
+        if ($device === null) {
             return new VoteRecordingResult(
                 accepted: false,
-                message: 'Kód '.$code.' nepredstavuje hlasovaciu voľbu.',
+                message: 'Zariadenie '.$decodedFrame['deviceNumber'].' sa nenašlo.',
+                deviceNumber: (string) $decodedFrame['deviceNumber'],
+                buttonName: $decodedFrame['buttonName'],
+                results: $question->summarizedResults(),
+                rejectionReason: 'unknown_device',
+            );
+        }
+
+        $buttonName = $decodedFrame['buttonName'];
+
+        if (! in_array($buttonName, ['A', 'B', 'C'], true)) {
+            return new VoteRecordingResult(
+                accepted: false,
+                message: 'Tlačidlo '.$buttonName.' sa do výsledku hlasovania nezapočítava.',
                 deviceNumber: $device->device_number,
                 buttonName: $buttonName,
                 results: $question->summarizedResults(),
@@ -167,16 +183,15 @@ class VoteRecorder
             && in_array($question->status, ['live', 'paused'], true);
     }
 
-    private function resolveDevice(string $code): ?Device
+    private function resolveDevice(int $deviceNumber): ?Device
     {
+        $normalizedDeviceNumber = (string) $deviceNumber;
+
         return Device::query()
-            ->where('code_a', $code)
-            ->orWhere('code_b', $code)
-            ->orWhere('code_c', $code)
-            ->orWhere('code_d', $code)
-            ->orWhere('code_e', $code)
-            ->orWhere('code_f', $code)
-            ->orWhere('code_ruka', $code)
+            ->whereIn('device_number', array_values(array_unique([
+                $normalizedDeviceNumber,
+                str_pad($normalizedDeviceNumber, 3, '0', STR_PAD_LEFT),
+            ])))
             ->first();
     }
 }

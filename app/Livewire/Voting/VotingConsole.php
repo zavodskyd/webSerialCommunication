@@ -531,8 +531,6 @@ class VotingConsole extends Component
             'currentQuestion' => $question,
             'questions' => $this->questions()->get(),
             'results' => $question->summarizedResults(),
-            'codeLookup' => $this->getCodeLookup(),
-            'codePrefixes' => $this->getCodePrefixes(),
             'eventsLog' => $this->eventsLogVisible ? $this->recentEventsForCurrentVoting() : collect(),
             'usesExternalAgent' => $this->isRustAgentDriver(),
         ])->layout('layouts.app')->title('Operátorská konzola');

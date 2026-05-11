@@ -3,31 +3,151 @@
 namespace App\Livewire;
 
 use App\Models\Device;
+use App\Support\QomoHexFrameDecoder;
+use App\Support\SerialAgentClient;
+use App\Support\SerialAgentTestMonitor;
 use Illuminate\Contracts\View\View;
-use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Livewire\Component;
 
 class SerialCommunication extends Component
 {
     public string $result = '';
 
-    public EloquentCollection $devices;
+    public array $deviceRows = [];
+
+    public array $visibleDeviceRows = [];
+
+    public array $deviceButtonCounts = [];
+
+    public array $recentFrames = [];
 
     public ?string $activeCode = null;
 
-    public function mount(): void
+    public ?string $lastMatchedDeviceNumber = null;
+
+    public ?string $lastButtonName = null;
+
+    public bool $serialConnected = false;
+
+    public bool $collecting = false;
+
+    public ?string $connectedPortPath = null;
+
+    public int $queuedFrames = 0;
+
+    public int $totalFrames = 0;
+
+    public int $decodedFrames = 0;
+
+    public int $invalidFrames = 0;
+
+    public ?bool $agentHealthy = null;
+
+    public ?string $agentError = null;
+
+    public ?string $statusMessage = null;
+
+    public function mount(SerialAgentClient $client, SerialAgentTestMonitor $monitor): void
     {
-        $this->devices = Device::query()
+        $this->deviceRows = Device::query()
             ->ordered()
-            ->get();
+            ->pluck('device_number')
+            ->map(fn (string $deviceNumber): array => [
+                'displayNumber' => $deviceNumber,
+                'normalizedNumber' => $this->normalizeDeviceNumber($deviceNumber),
+            ])
+            ->all();
+
+        $this->refreshState($client, $monitor);
     }
 
     public function render(): View
     {
-        return view('livewire.serial-communication', [
-            'codeLookup' => $this->getCodeLookup(),
-            'codePrefixes' => $this->getCodePrefixes(),
-        ]);
+        return view('livewire.serial-communication');
+    }
+
+    public function refreshState(SerialAgentClient $client, SerialAgentTestMonitor $monitor): void
+    {
+        $response = $client->health();
+
+        $this->hydrateAgentState($response);
+        $this->syncMonitor($monitor);
+    }
+
+    public function startCollection(SerialAgentClient $client, SerialAgentTestMonitor $monitor): void
+    {
+        $monitor->reset();
+        $response = $client->command('start');
+
+        $this->hydrateAgentState($response);
+        $this->syncMonitor($monitor);
+        $this->statusMessage = ($response['ok'] ?? false) === true
+            ? 'Zber bol spustený.'
+            : 'Nepodarilo sa spustiť zber: '.($response['error'] ?? 'unknown');
+    }
+
+    public function stopCollection(SerialAgentClient $client, SerialAgentTestMonitor $monitor): void
+    {
+        $response = $client->command('stop');
+
+        $this->hydrateAgentState($response);
+        $this->syncMonitor($monitor);
+        $this->statusMessage = ($response['ok'] ?? false) === true
+            ? 'Zber bol zastavený.'
+            : 'Nepodarilo sa zastaviť zber: '.($response['error'] ?? 'unknown');
+    }
+
+    public function disconnectAgent(SerialAgentClient $client, SerialAgentTestMonitor $monitor): void
+    {
+        $response = $client->command('close');
+
+        $this->hydrateAgentState($response);
+        $this->syncMonitor($monitor);
+        $this->statusMessage = ($response['ok'] ?? false) === true
+            ? 'Serial Agent spojenie bolo ukončené.'
+            : 'Nepodarilo sa odpojiť Serial Agent: '.($response['error'] ?? 'unknown');
+    }
+
+    public function clearReceivedData(SerialAgentTestMonitor $monitor): void
+    {
+        $monitor->reset();
+        $this->syncMonitor($monitor);
+        $this->statusMessage = 'Prijaté dáta boli vymazané.';
+    }
+
+    /**
+     * @return array{found: bool, deviceNumber: string|null, buttonName: string|null, code: string, message: string}
+     */
+    public function checkCode(string $code): array
+    {
+        $decoder = app(QomoHexFrameDecoder::class);
+        $normalizedCode = strtolower(trim($code));
+        $decodedFrame = $decoder->decode($normalizedCode);
+
+        if ($decodedFrame === null) {
+            $this->result = 'Frame '.$normalizedCode.' sa nepodarilo dekódovať.';
+
+            return [
+                'found' => false,
+                'deviceNumber' => null,
+                'buttonName' => null,
+                'code' => $normalizedCode,
+                'message' => $this->result,
+            ];
+        }
+
+        $this->updateActiveCode($normalizedCode);
+        $this->lastMatchedDeviceNumber = (string) $decodedFrame['deviceNumber'];
+        $this->lastButtonName = $decodedFrame['buttonName'];
+        $this->result = 'Číslo zariadenia: '.$this->lastMatchedDeviceNumber.', Stlačené tlačidlo: '.$this->lastButtonName.' ('.$normalizedCode.')';
+
+        return [
+            'found' => true,
+            'deviceNumber' => $this->lastMatchedDeviceNumber,
+            'buttonName' => $this->lastButtonName,
+            'code' => $normalizedCode,
+            'message' => $this->result,
+        ];
     }
 
     public function updateActiveCode(string $code): void
@@ -36,117 +156,63 @@ class SerialCommunication extends Component
     }
 
     /**
-     * @return array{found: bool, deviceNumber: string|null, buttonName: string|null, code: string, message: string}
+     * @param  array<string, mixed>  $response
      */
-    public function checkCode(string $code): array
+    private function hydrateAgentState(array $response): void
     {
-        $device = $this->devices->first(function (Device $device) use ($code): bool {
-            return in_array($code, [
-                $device->code_a,
-                $device->code_b,
-                $device->code_c,
-                $device->code_d,
-                $device->code_e,
-                $device->code_f,
-                $device->code_ruka,
-            ], true);
-        });
+        $this->agentHealthy = (bool) ($response['ok'] ?? false);
+        $this->agentError = $this->agentHealthy ? null : (string) ($response['error'] ?? 'agent not reachable');
+        $this->serialConnected = (bool) ($response['connected'] ?? false);
+        $this->collecting = (bool) ($response['collecting'] ?? false);
+        $this->connectedPortPath = is_string($response['selected_port'] ?? null)
+            ? $response['selected_port']
+            : null;
+        $this->queuedFrames = (int) ($response['queuedFrames'] ?? $response['queued_frames'] ?? 0);
+    }
 
-        if ($device) {
-            $this->updateActiveCode($code);
-            $buttonName = $this->resolveButtonName($device, $code);
+    private function syncMonitor(SerialAgentTestMonitor $monitor): void
+    {
+        $snapshot = $monitor->snapshot();
 
-            $this->result = 'Názov zariadenia: '.$device->device_number.', Stlačená hodnota: '.$buttonName.' ('.$code.')';
-
-            return [
-                'found' => true,
-                'deviceNumber' => $device->device_number,
-                'buttonName' => $buttonName,
-                'code' => $code,
-                'message' => $this->result,
-            ];
-        } else {
-            $this->result = 'Kód '.$code.' sa nenašiel';
-
-            return [
-                'found' => false,
-                'deviceNumber' => null,
-                'buttonName' => null,
-                'code' => $code,
-                'message' => $this->result,
-            ];
-        }
+        $this->activeCode = $snapshot['lastHex'];
+        $this->lastMatchedDeviceNumber = $snapshot['lastDeviceNumber'];
+        $this->lastButtonName = $snapshot['lastButtonName'];
+        $this->totalFrames = $snapshot['totalFrames'];
+        $this->decodedFrames = $snapshot['decodedFrames'];
+        $this->invalidFrames = $snapshot['invalidFrames'];
+        $this->deviceButtonCounts = $snapshot['deviceButtonCounts'];
+        $this->recentFrames = $snapshot['recentFrames'];
+        $this->visibleDeviceRows = $this->buildVisibleDeviceRows();
     }
 
     /**
-     * @return array<string, array{deviceNumber: string, buttonName: string}>
+     * @return array<int, array{displayNumber: string, normalizedNumber: string}>
      */
-    public function getCodeLookup(): array
+    private function buildVisibleDeviceRows(): array
     {
-        $lookup = [];
+        $knownRows = collect($this->deviceRows)->keyBy('normalizedNumber');
+        $rows = collect(array_keys($this->deviceButtonCounts))
+            ->map(function (string $deviceNumber) use ($knownRows): array {
+                $row = $knownRows->get($deviceNumber);
 
-        foreach ($this->devices as $device) {
-            foreach ($this->deviceCodes($device) as $buttonName => $deviceCode) {
-                if ($deviceCode === '') {
-                    continue;
-                }
+                return is_array($row)
+                    ? $row
+                    : [
+                        'displayNumber' => $deviceNumber,
+                        'normalizedNumber' => $deviceNumber,
+                    ];
+            })
+            ->sortBy(fn (array $row): int => (int) $row['normalizedNumber'])
+            ->values()
+            ->all();
 
-                $lookup[$deviceCode] = [
-                    'deviceNumber' => $device->device_number,
-                    'buttonName' => $buttonName,
-                ];
-            }
-        }
-
-        return $lookup;
+        return $rows;
     }
 
-    /**
-     * @return array{oneByte: string[], twoBytes: string[]}
-     */
-    public function getCodePrefixes(): array
+    private function normalizeDeviceNumber(string $deviceNumber): string
     {
-        $oneBytePrefixes = [];
-        $twoBytePrefixes = [];
+        $normalizedNumber = ltrim($deviceNumber, '0');
 
-        foreach (array_keys($this->getCodeLookup()) as $code) {
-            $oneBytePrefixes[] = substr($code, 0, 2);
-            $twoBytePrefixes[] = substr($code, 0, 4);
-        }
-
-        return [
-            'oneByte' => array_values(array_unique($oneBytePrefixes)),
-            'twoBytes' => array_values(array_unique($twoBytePrefixes)),
-        ];
-    }
-
-    private function resolveButtonName(Device $device, string $code): ?string
-    {
-        return match ($code) {
-            $device->code_a => 'A',
-            $device->code_b => 'B',
-            $device->code_c => 'C',
-            $device->code_d => 'D',
-            $device->code_e => 'E',
-            $device->code_f => 'F',
-            $device->code_ruka => 'Ruka',
-            default => null,
-        };
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function deviceCodes(Device $device): array
-    {
-        return [
-            'A' => $device->code_a,
-            'B' => $device->code_b,
-            'C' => $device->code_c,
-            'D' => $device->code_d,
-            'E' => $device->code_e,
-            'F' => $device->code_f,
-            'Ruka' => $device->code_ruka,
-        ];
+        return (string) ($normalizedNumber === '' ? 0 : (int) $normalizedNumber);
     }
 }

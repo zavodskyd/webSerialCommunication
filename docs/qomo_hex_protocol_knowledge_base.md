@@ -2,14 +2,16 @@
 
 ## Overview
 
-The protocol uses fixed-length 3-byte HEX frames for transmitting device button events over UART communication.
+The protocol uses fixed-length 3-byte HEX frames for transmitting device button events.
 
 Example frames:
 
 ```text
 2081a1
 2091b1
-27ae89
+3187b6
+3486b2
+3585b0
 ```
 
 Typical serial communication settings:
@@ -37,44 +39,55 @@ Each message consists of 3 bytes:
 
 ## Byte 1 (B1)
 
-Contains the upper bits of the device ID.
+`B1` stores the high part of the device number as an offset from `0x20`.
 
 Structure:
 
 ```text
-0x20 | highNibble(deviceId)
+B1 = 0x20 + floor(deviceId / 16)
 ```
+
+This is important because devices can exceed `255`.
+
+Do **not** decode `B1` using only `B1 & 0x0F`.  
+That would only work for a limited range and fails for devices above `255`.
 
 Examples:
 
-| Device ID | B1 |
-|---|---|
-| 1 | 0x20 |
-| 16 | 0x21 |
-| 100 | 0x26 |
-| 211 | 0x2D |
+| Device ID | floor(deviceId / 16) | B1 |
+|---:|---:|---:|
+| 1 | 0 | 0x20 |
+| 16 | 1 | 0x21 |
+| 100 | 6 | 0x26 |
+| 211 | 13 | 0x2D |
+| 279 | 17 | 0x31 |
+| 313 | 19 | 0x33 |
+| 326 | 20 | 0x34 |
+| 341 | 21 | 0x35 |
 
 ---
 
 ## Byte 2 (B2)
 
-Contains:
-
-- upper 4 bits = button identifier
-- lower 4 bits = lower bits of device ID
+`B2` contains both the button and the low part of the device number.
 
 Structure:
 
 ```text
-buttonPrefix | lowNibble(deviceId)
+B2 = buttonPrefix | (deviceId % 16)
 ```
+
+Meaning:
+
+- upper 4 bits = button identifier
+- lower 4 bits = device number remainder modulo 16
 
 ---
 
 # Button Mapping
 
 | Button | Prefix |
-|---|---|
+|---|---:|
 | A | 0x80 |
 | B | 0x90 |
 | C | 0xA0 |
@@ -87,40 +100,54 @@ buttonPrefix | lowNibble(deviceId)
 
 ## Byte 3 (B3)
 
-Checksum byte.
+`B3` is a checksum byte.
 
-Generated using XOR:
+Structure:
 
 ```text
 B3 = B1 XOR B2
 ```
 
-The checksum is used to validate frame integrity.
-
----
-
-# Device ID Decoding
-
-The device ID is reconstructed from the lower nibble of B1 and the lower nibble of B2.
-
-Formula:
+A frame is valid only when:
 
 ```text
-deviceId =
-((B1 & 0x0F) << 4) |
-(B2 & 0x0F)
+(B1 XOR B2) == B3
 ```
 
 ---
 
-# Button Decoding
+# Encoding
 
-The button is determined from the upper nibble of B2.
-
-Formula:
+To generate a 3-byte frame from a device number and button:
 
 ```text
-button = B2 & 0xF0
+B1 = 0x20 + floor(deviceId / 16)
+B2 = buttonPrefix | (deviceId % 16)
+B3 = B1 XOR B2
+```
+
+Final frame:
+
+```text
+[B1][B2][B3]
+```
+
+---
+
+# Decoding
+
+To decode a received 3-byte frame:
+
+```text
+deviceId = ((B1 - 0x20) << 4) | (B2 & 0x0F)
+buttonPrefix = B2 & 0xF0
+valid = (B1 XOR B2) == B3
+```
+
+Equivalent form:
+
+```text
+deviceId = ((B1 - 0x20) * 16) + (B2 & 0x0F)
 ```
 
 ---
@@ -135,12 +162,19 @@ Frame:
 20 81 A1
 ```
 
-Explanation:
+Encoding:
 
 ```text
-B1 = 0x20
-B2 = 0x81
+B1 = 0x20 + floor(1 / 16) = 0x20
+B2 = 0x80 | (1 % 16) = 0x81
 B3 = 0x20 XOR 0x81 = 0xA1
+```
+
+Decoded result:
+
+```text
+deviceId = 1
+button = A
 ```
 
 ---
@@ -153,6 +187,13 @@ Frame:
 20 91 B1
 ```
 
+Decoded result:
+
+```text
+deviceId = 1
+button = B
+```
+
 ---
 
 ## Device 211, Button C
@@ -163,43 +204,121 @@ Frame:
 2D A3 8E
 ```
 
-Verification:
+Validation:
 
 ```text
 0x2D XOR 0xA3 = 0x8E
 ```
 
----
-
-# Frame Validation
-
-A received frame is valid when:
+Decoding:
 
 ```text
-(B1 XOR B2) == B3
+deviceId = ((0x2D - 0x20) << 4) | (0xA3 & 0x0F)
+deviceId = (0x0D << 4) | 0x03
+deviceId = 211
+button = C
+```
+
+---
+
+## Device 279, Button A
+
+Frame:
+
+```text
+31 87 B6
+```
+
+Validation:
+
+```text
+0x31 XOR 0x87 = 0xB6
+```
+
+Decoding:
+
+```text
+deviceId = ((0x31 - 0x20) << 4) | (0x87 & 0x0F)
+deviceId = (0x11 << 4) | 0x07
+deviceId = 279
+button = A
+```
+
+---
+
+## Device 326, Button A
+
+Frame:
+
+```text
+34 86 B2
+```
+
+Validation:
+
+```text
+0x34 XOR 0x86 = 0xB2
+```
+
+Decoding:
+
+```text
+deviceId = ((0x34 - 0x20) << 4) | (0x86 & 0x0F)
+deviceId = (0x14 << 4) | 0x06
+deviceId = 326
+button = A
+```
+
+---
+
+## Device 341, Button C
+
+Frame:
+
+```text
+35 A5 90
+```
+
+Validation:
+
+```text
+0x35 XOR 0xA5 = 0x90
+```
+
+Decoding:
+
+```text
+deviceId = ((0x35 - 0x20) << 4) | (0xA5 & 0x0F)
+deviceId = (0x15 << 4) | 0x05
+deviceId = 341
+button = C
+```
+
+---
+
+# Known Pitfall
+
+This formula is incorrect for devices above 255:
+
+```text
+deviceId = ((B1 & 0x0F) << 4) | (B2 & 0x0F)
+```
+
+It incorrectly discards the higher range information stored in `B1`.
+
+Correct formula:
+
+```text
+deviceId = ((B1 - 0x20) << 4) | (B2 & 0x0F)
 ```
 
 ---
 
 # Protocol Characteristics
 
-- Fixed-length 3-byte frames
-- Stateless encoding
-- Deterministic frame generation
-- Simple XOR checksum
-- No lookup database required
-- Device IDs and buttons can be generated and decoded algorithmically
-
----
-
-# Practical Benefits
-
-The protocol allows:
-
-- fast frame generation
-- low memory usage
-- easy validation
-- simple decoding
-- deterministic reconstruction of device events
-
-No full dataset of device codes needs to be stored.
+- fixed-length 3-byte frames
+- deterministic encoding and decoding
+- simple XOR checksum
+- no full lookup table required
+- supports at least device IDs `1..341` using the observed data range
+- device number and button can be reconstructed algorithmically from each valid frame

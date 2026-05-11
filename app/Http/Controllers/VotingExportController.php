@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Device;
 use App\Models\Voting;
 use App\Models\VotingQuestion;
 use App\Services\Voting\NativePdfExporter;
@@ -75,7 +76,15 @@ class VotingExportController extends Controller
     }
 
     /**
-     * @return array{voting: Voting, questions: Collection<int, VotingQuestion>, exportPdfUrl: ?string, showPrintToolbar: bool, showPrintScript: bool, inlineAppCss: ?string}
+     * @return array{
+     *     voting: Voting,
+     *     questions: Collection<int, VotingQuestion>,
+     *     questionRows: array<int, array<int, array{device_number: string, weight: float, button_name: string}>>,
+     *     exportPdfUrl: ?string,
+     *     showPrintToolbar: bool,
+     *     showPrintScript: bool,
+     *     inlineAppCss: ?string
+     * }
      */
     private function pressedOptionsViewData(
         Voting $voting,
@@ -85,14 +94,45 @@ class VotingExportController extends Controller
         ?string $inlineAppCss = null,
     ): array {
         $voting->load([
+            'attendees.device',
             'questions' => fn ($query) => $query
                 ->where('status', 'closed')
-                ->with(['votes.device']),
+                ->with([
+                    'voteEvents' => fn ($voteEventsQuery) => $voteEventsQuery
+                        ->whereNotNull('device_id')
+                        ->whereNotNull('button_name')
+                        ->with('device')
+                        ->orderByDesc('received_at')
+                        ->orderByDesc('id'),
+                ]),
         ]);
+
+        $attendeesByDeviceId = $voting->attendees->keyBy('device_id');
+        $questionRows = [];
+
+        foreach ($voting->questions as $question) {
+            $latestEvents = $question->voteEvents
+                ->unique('device_id')
+                ->sortBy(fn ($event) => Device::sortKeyForDeviceNumber($event->device?->device_number))
+                ->values();
+
+            $questionRows[$question->id] = $latestEvents
+                ->map(function ($event) use ($attendeesByDeviceId): array {
+                    $attendee = $attendeesByDeviceId->get($event->device_id);
+
+                    return [
+                        'device_number' => $event->device?->device_number ?? 'Neznáme',
+                        'weight' => (float) ($attendee?->weight ?? 0),
+                        'button_name' => (string) $event->button_name,
+                    ];
+                })
+                ->all();
+        }
 
         return [
             'voting' => $voting,
             'questions' => $voting->questions,
+            'questionRows' => $questionRows,
             'exportPdfUrl' => $exportPdfUrl ?? route('votings.exports.pressed-options.pdf', $voting),
             'showPrintToolbar' => $showPrintToolbar,
             'showPrintScript' => $showPrintScript,

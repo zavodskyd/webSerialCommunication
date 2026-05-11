@@ -25,14 +25,15 @@
                 </thead>
                 <tbody>
                     @forelse ($questions as $question)
-                        @forelse ($question->votes->sortBy(fn ($vote) => \App\Models\Device::sortKeyForDeviceNumber($vote->device?->device_number)) as $vote)
+                        @php($rows = $questionRows[$question->id] ?? [])
+                        @forelse ($rows as $row)
                             <tr class="border-b border-slate-200">
                                 <td class="py-3 pr-4 font-semibold text-slate-900">{{ $question->text }}</td>
-                                <td class="px-4 py-3 text-slate-700">{{ $vote->device?->device_number ?? 'Neznáme' }}</td>
+                                <td class="px-4 py-3 text-slate-700">{{ $row['device_number'] }}</td>
                                 <td class="px-4 py-3 text-right font-semibold text-slate-900">
-                                    {{ rtrim(rtrim(number_format((float) $vote->weight_snapshot, 2, ',', ' '), '0'), ',') }}
+                                    {{ rtrim(rtrim(number_format($row['weight'], 2, ',', ' '), '0'), ',') }}
                                 </td>
-                                <td class="py-3 pl-4 font-semibold text-slate-900">{{ $vote->option_key }}</td>
+                                <td class="py-3 pl-4 font-semibold text-slate-900">{{ $row['button_name'] }}</td>
                             </tr>
                         @empty
                             <tr class="border-b border-slate-200">

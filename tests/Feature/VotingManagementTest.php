@@ -5,6 +5,7 @@ use App\Livewire\Voting\VotingEditor;
 use App\Livewire\Voting\VotingIndex;
 use App\Livewire\Voting\VotingPresentation;
 use App\Models\Device;
+use App\Models\VoteEvent;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
 use Illuminate\Http\UploadedFile;
@@ -570,6 +571,17 @@ test('user can open printable exports for closed voting questions', function () 
 
     $closedQuestion->update(['status' => 'live']);
     $closedQuestion->recordVote($attendee, 'A');
+    VoteEvent::query()->create([
+        'voting_id' => $voting->id,
+        'voting_question_id' => $closedQuestion->id,
+        'device_id' => $device->id,
+        'raw_hex' => qomoFrameFor(1, 'A'),
+        'source' => 'rust-agent',
+        'button_name' => 'A',
+        'accepted' => true,
+        'rejection_reason' => null,
+        'received_at' => now(),
+    ]);
     $closedQuestion->update(['status' => 'closed']);
     $openQuestion->update(['status' => 'live']);
 
@@ -600,6 +612,63 @@ test('user can open printable exports for closed voting questions', function () 
         ->assertSeeText('5')
         ->assertSeeText('A')
         ->assertDontSeeText('Otvorená otázka');
+});
+
+test('pressed-options export uses the latest received device event including non-voting buttons', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
+    ]);
+
+    $question = $voting->createQuestionWithDefaults(
+        order: 1,
+        label: 'Hlasovanie 1',
+        text: 'Schválenie programu',
+        responseTimeSeconds: 30,
+    );
+
+    $device = createVotingDevice('001');
+
+    VotingAttendee::query()->create([
+        'voting_id' => $voting->id,
+        'device_id' => $device->id,
+        'weight' => 5,
+        'is_present' => true,
+        'can_vote' => true,
+    ]);
+
+    VoteEvent::query()->create([
+        'voting_id' => $voting->id,
+        'voting_question_id' => $question->id,
+        'device_id' => $device->id,
+        'raw_hex' => qomoFrameFor(1, 'A'),
+        'source' => 'rust-agent',
+        'button_name' => 'A',
+        'accepted' => true,
+        'rejection_reason' => null,
+        'received_at' => now()->subSecond(),
+    ]);
+
+    VoteEvent::query()->create([
+        'voting_id' => $voting->id,
+        'voting_question_id' => $question->id,
+        'device_id' => $device->id,
+        'raw_hex' => qomoFrameFor(1, 'D'),
+        'source' => 'rust-agent',
+        'button_name' => 'D',
+        'accepted' => false,
+        'rejection_reason' => 'non_voting_button',
+        'received_at' => now(),
+    ]);
+
+    $question->update(['status' => 'closed']);
+
+    $this->get(route('votings.exports.pressed-options', $voting))
+        ->assertOk()
+        ->assertSeeText('Schválenie programu')
+        ->assertSeeText('001')
+        ->assertSeeText('5')
+        ->assertSeeText('D')
+        ->assertDontSeeText('Bez prijatých hlasov.');
 });
 
 function createVotingDevice(string $deviceNumber): Device

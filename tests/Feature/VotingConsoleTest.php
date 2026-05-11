@@ -4,6 +4,7 @@ use App\Livewire\Voting\VotingConsole;
 use App\Models\Device;
 use App\Models\User;
 use App\Models\Vote;
+use App\Models\VoteEvent;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
 use App\Models\VotingQuestion;
@@ -171,6 +172,34 @@ test('events log toggle flips the visible flag', function () {
 
     $component->toggleEventsLog();
     expect($component->eventsLogVisible)->toBeFalse();
+});
+
+test('events log returns all events for the current voting instead of truncating to 100', function () {
+    [, $voting, $question, $device] = createConsoleFixture();
+
+    for ($index = 0; $index < 101; $index++) {
+        VoteEvent::query()->create([
+            'voting_id' => $voting->id,
+            'voting_question_id' => $question->id,
+            'device_id' => $device->id,
+            'raw_hex' => qomoFrameFor(1, 'A'),
+            'source' => 'rust-agent',
+            'button_name' => 'A',
+            'accepted' => true,
+            'rejection_reason' => null,
+            'received_at' => now()->addSeconds($index),
+        ]);
+    }
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+    $component->toggleEventsLog();
+
+    $view = $component->render();
+    $eventsLog = $view->getData()['eventsLog'];
+
+    expect($eventsLog)->toHaveCount(101);
+    expect($eventsLog->first()->received_at->timestamp)->toBeGreaterThan($eventsLog->last()->received_at->timestamp);
 });
 
 test('node helper buffers frames to disk when laravel POST fails', function () {

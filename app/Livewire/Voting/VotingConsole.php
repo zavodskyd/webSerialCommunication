@@ -537,7 +537,7 @@ class VotingConsole extends Component
     }
 
     /**
-     * Last 100 vote_events across all questions in this voting, newest first.
+     * All vote_events across all questions in this voting, newest first.
      * Powers the "Zobraziť log hlasov" diagnostic modal in the operator console.
      */
     private function recentEventsForCurrentVoting(): Collection
@@ -545,7 +545,6 @@ class VotingConsole extends Component
         return VoteEvent::query()
             ->where('voting_id', $this->voting->id)
             ->latest('received_at')
-            ->limit(100)
             ->with(['device:id,device_number', 'votingQuestion:id,order'])
             ->get();
     }

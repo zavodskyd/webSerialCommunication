@@ -320,7 +320,7 @@
                     <div>
                         <p class="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">Log prijatých hlasov
                         </p>
-                        <h2 class="mt-3 text-2xl font-semibold text-slate-900">Prijaté rámce z hlasovania</h2>
+                        <h2 class="mt-3 text-2xl font-semibold text-slate-900">Prijaté rámce otázky</h2>
                         <p class="mt-2 text-sm text-slate-500">Zoradené najnovšie hore. Aktualizuje sa automaticky
                             každých 500 ms.</p>
                     </div>

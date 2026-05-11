@@ -174,8 +174,14 @@ test('events log toggle flips the visible flag', function () {
     expect($component->eventsLogVisible)->toBeFalse();
 });
 
-test('events log returns all events for the current voting instead of truncating to 100', function () {
+test('events log returns all events for the current question instead of truncating to 100', function () {
     [, $voting, $question, $device] = createConsoleFixture();
+    $otherQuestion = $voting->createQuestionWithDefaults(
+        order: 2,
+        label: 'Hlasovanie 2',
+        text: 'Schváliť zápisnicu?',
+        responseTimeSeconds: 30,
+    );
 
     for ($index = 0; $index < 101; $index++) {
         VoteEvent::query()->create([
@@ -191,6 +197,18 @@ test('events log returns all events for the current voting instead of truncating
         ]);
     }
 
+    VoteEvent::query()->create([
+        'voting_id' => $voting->id,
+        'voting_question_id' => $otherQuestion->id,
+        'device_id' => $device->id,
+        'raw_hex' => qomoFrameFor(1, 'B'),
+        'source' => 'rust-agent',
+        'button_name' => 'B',
+        'accepted' => true,
+        'rejection_reason' => null,
+        'received_at' => now()->addMinutes(10),
+    ]);
+
     $component = app(VotingConsole::class);
     $component->mount($voting);
     $component->toggleEventsLog();
@@ -200,6 +218,7 @@ test('events log returns all events for the current voting instead of truncating
 
     expect($eventsLog)->toHaveCount(101);
     expect($eventsLog->first()->received_at->timestamp)->toBeGreaterThan($eventsLog->last()->received_at->timestamp);
+    expect($eventsLog->every(fn (VoteEvent $event) => $event->voting_question_id === $question->id))->toBeTrue();
 });
 
 test('node helper buffers frames to disk when laravel POST fails', function () {

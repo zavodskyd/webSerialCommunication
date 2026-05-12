@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DatabaseBackupController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\Internal\SerialControlController;
 use App\Http\Controllers\Internal\SerialFrameController;
@@ -30,6 +31,11 @@ Route::get('/import-devices', [DeviceController::class, 'index'])->name('import.
 Route::post('/load-external-db', [DeviceController::class, 'loadExternalDb'])->name('load.external.db');
 Route::get('/import-external-db', [DeviceController::class, 'showImportForm'])->name('show.import.form');
 Route::get('/devices', [DeviceController::class, 'showDevices'])->name('devices.index');
+Route::get('/settings/backup', [DatabaseBackupController::class, 'index'])->name('settings.backup.index');
+Route::get('/settings/backup/database', [DatabaseBackupController::class, 'downloadDatabase'])->name('settings.backup.database');
+Route::get('/settings/backup/data', [DatabaseBackupController::class, 'downloadData'])->name('settings.backup.data');
+Route::post('/settings/backup/database', [DatabaseBackupController::class, 'restoreDatabase'])->name('settings.backup.database.restore');
+Route::post('/settings/backup/data', [DatabaseBackupController::class, 'restoreData'])->name('settings.backup.data.restore');
 Route::get('/votings', VotingIndex::class)->name('votings.index');
 Route::get('/votings/{voting}', VotingEditor::class)->name('votings.edit');
 Route::get('/votings/{voting}/console', VotingConsole::class)->name('votings.console');

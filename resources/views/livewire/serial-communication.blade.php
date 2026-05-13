@@ -33,16 +33,27 @@
             <x-primary-button wire:click="refreshState">Aktualizovať stav</x-primary-button>
             <x-secondary-button
                 wire:click="startCollection"
+                :disabled="! $serialConnected || $collecting"
                 wire:loading.attr="disabled"
-                wire:target="startCollection,refreshState"
+                wire:target="startCollection"
                 class="{{ $collecting ? '!border-green-600 !bg-green-500 !text-white shadow-sm shadow-green-500/30' : '' }}"
             >
                 Spustiť zber
             </x-secondary-button>
-            <x-secondary-button wire:click="stopCollection" wire:loading.attr="disabled" wire:target="stopCollection,refreshState">
+            <x-secondary-button
+                wire:click="stopCollection"
+                :disabled="! $serialConnected || ! $collecting"
+                wire:loading.attr="disabled"
+                wire:target="stopCollection"
+            >
                 Zastaviť zber
             </x-secondary-button>
-            <x-secondary-button wire:click="disconnectAgent" wire:loading.attr="disabled" wire:target="disconnectAgent,refreshState">
+            <x-secondary-button
+                wire:click="disconnectAgent"
+                :disabled="! $serialConnected || $collecting"
+                wire:loading.attr="disabled"
+                wire:target="disconnectAgent"
+            >
                 Odpojiť agent
             </x-secondary-button>
             <x-secondary-button wire:click="clearReceivedData" wire:loading.attr="disabled" wire:target="clearReceivedData">

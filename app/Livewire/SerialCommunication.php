@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Device;
 use App\Support\QomoHexFrameDecoder;
 use App\Support\SerialAgentClient;
+use App\Support\SerialAgentMode;
 use App\Support\SerialAgentTestMonitor;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
@@ -77,7 +78,12 @@ class SerialCommunication extends Component
     public function startCollection(SerialAgentClient $client, SerialAgentTestMonitor $monitor): void
     {
         $monitor->reset();
+        SerialAgentMode::activateTest();
         $response = $client->command('start');
+
+        if (($response['ok'] ?? false) !== true) {
+            SerialAgentMode::clear();
+        }
 
         $this->hydrateAgentState($response);
         $this->syncMonitor($monitor);
@@ -89,6 +95,7 @@ class SerialCommunication extends Component
     public function stopCollection(SerialAgentClient $client, SerialAgentTestMonitor $monitor): void
     {
         $response = $client->command('stop');
+        SerialAgentMode::clear();
 
         $this->hydrateAgentState($response);
         $this->syncMonitor($monitor);
@@ -100,6 +107,7 @@ class SerialCommunication extends Component
     public function disconnectAgent(SerialAgentClient $client, SerialAgentTestMonitor $monitor): void
     {
         $response = $client->command('close');
+        SerialAgentMode::clear();
 
         $this->hydrateAgentState($response);
         $this->syncMonitor($monitor);

@@ -1,4 +1,4 @@
-<div wire:poll.2s.visible="refreshState">
+<div wire:poll.500ms.visible="refreshState">
     <div class="space-y-4">
         <div class="flex flex-wrap items-center gap-3">
             <h1 class="text-xl font-semibold text-slate-900">Sériová komunikácia</h1>

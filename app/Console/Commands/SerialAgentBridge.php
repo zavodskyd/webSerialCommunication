@@ -6,6 +6,7 @@ use Amp\TimeoutCancellation;
 use Amp\Websocket\Client\WebsocketHandshake;
 use App\Services\SerialAgent\SerialAgentFrameHandler;
 use App\Support\SerialAgentFiles;
+use App\Support\SerialAgentMode;
 use App\Support\SerialAgentStatus;
 use App\Support\SerialAgentTestMonitor;
 use App\Support\SerialHelperTokens;
@@ -97,6 +98,16 @@ class SerialAgentBridge extends Command
         }
 
         $monitor->recordFrame($hex);
+
+        if (SerialAgentMode::isTest()) {
+            $connection->sendText(json_encode([
+                'type' => 'ack',
+                'id' => $id,
+            ], JSON_THROW_ON_ERROR));
+
+            return;
+        }
+
         $handler->handle($hex);
 
         $connection->sendText(json_encode([

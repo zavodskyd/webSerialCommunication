@@ -3,8 +3,14 @@
 use App\Livewire\SerialCommunication;
 use App\Models\Device;
 use App\Support\SerialAgentClient;
+use App\Support\SerialAgentMode;
 use App\Support\SerialAgentTestMonitor;
 use Livewire\Livewire;
+
+afterEach(function () {
+    SerialAgentMode::clear();
+    app(SerialAgentTestMonitor::class)->reset();
+});
 
 test('it decodes a qomo frame without using stored button codes', function () {
     app(SerialAgentTestMonitor::class)->reset();
@@ -148,4 +154,33 @@ test('it starts collection through serial-agent and resets monitor counts', func
         ->assertSet('decodedFrames', 0)
         ->assertSet('invalidFrames', 0)
         ->assertSeeText('Zber bol spustený.');
+
+    expect(SerialAgentMode::isTest())->toBeTrue();
+});
+
+test('it clears test mode after stopping collection', function () {
+    SerialAgentMode::activateTest();
+
+    $client = $this->mock(SerialAgentClient::class);
+    $client->shouldReceive('health')->once()->andReturn([
+        'ok' => true,
+        'connected' => true,
+        'collecting' => true,
+        'selected_port' => '/dev/cu.usbserial-test',
+        'queued_frames' => 0,
+    ]);
+    $client->shouldReceive('command')->once()->with('stop')->andReturn([
+        'ok' => true,
+        'connected' => true,
+        'collecting' => false,
+        'selected_port' => '/dev/cu.usbserial-test',
+        'queued_frames' => 0,
+    ]);
+
+    Livewire::test(SerialCommunication::class)
+        ->call('stopCollection')
+        ->assertSet('collecting', false)
+        ->assertSeeText('Zber bol zastavený.');
+
+    expect(SerialAgentMode::current())->toBeNull();
 });

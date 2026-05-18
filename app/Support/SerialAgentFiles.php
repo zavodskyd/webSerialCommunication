@@ -6,11 +6,25 @@ namespace App\Support;
 
 class SerialAgentFiles
 {
+    private const MODE_FILE = 'serial-agent.mode';
+
     private const PORT_FILE = 'serial-agent.port';
+
+    private const TEST_MONITOR_FILE = 'serial-agent-test-monitor.json';
+
+    public static function modePath(): string
+    {
+        return storage_path('framework/'.self::MODE_FILE);
+    }
 
     public static function portPath(): string
     {
         return storage_path('framework/'.self::PORT_FILE);
+    }
+
+    public static function testMonitorPath(): string
+    {
+        return storage_path('framework/'.self::TEST_MONITOR_FILE);
     }
 
     public static function port(): ?int

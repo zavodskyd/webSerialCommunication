@@ -2,12 +2,10 @@
 
 namespace App\Support;
 
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 
 class SerialAgentTestMonitor
 {
-    private const CACHE_KEY = 'serial-agent.test-monitor';
-
     private const MAX_RECENT_FRAMES = 25;
 
     public function __construct(private readonly QomoHexFrameDecoder $decoder) {}
@@ -32,7 +30,13 @@ class SerialAgentTestMonitor
      */
     public function snapshot(): array
     {
-        $state = Cache::get(self::CACHE_KEY);
+        $path = SerialAgentFiles::testMonitorPath();
+
+        if (! File::exists($path)) {
+            return $this->defaultState();
+        }
+
+        $state = json_decode((string) File::get($path), true);
 
         return is_array($state) ? $state : $this->defaultState();
     }
@@ -135,6 +139,7 @@ class SerialAgentTestMonitor
     {
         $state['updatedAt'] = now()->toIso8601String();
 
-        Cache::put(self::CACHE_KEY, $state, now()->addHours(4));
+        File::ensureDirectoryExists(dirname(SerialAgentFiles::testMonitorPath()));
+        File::put(SerialAgentFiles::testMonitorPath(), json_encode($state, JSON_THROW_ON_ERROR));
     }
 }

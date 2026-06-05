@@ -1,12 +1,10 @@
-{{-- Operator console — native serial helper driver path. --------------------
+{{-- Operator console — rust serial-agent driver path. -----------------------
 
-     Active when config('serial.driver') is node-helper or rust-agent.
-     Replaces the legacy Web Serial / @script-block view at voting-console.blade.php.
+     The runtime serial path is the Rust serial-agent only.
 
      Key differences from the legacy view:
-       - No JavaScript at all (no Web Serial, no @script, no DOM mutation).
-       - Serial port is owned by a helper process. In rust-agent mode, port
-         selection happens in the separate Serial Agent window.
+       - No JavaScript at all (no Web Serial, no Blade script block, no DOM mutation).
+       - Serial port selection happens in the separate Serial Agent window.
        - Live updates use wire:poll.500ms. The poll re-renders only the live
          section (results panel + last-vote indicator + timer) — the timer
          is computed server-side from $currentQuestion->opened_at.
@@ -29,18 +27,14 @@
             </div>
         </div>
 
-        @if ($helperHealthy === false)
+        @if ($serialAgentHealthy === false)
             <div
                 class="flex flex-wrap items-center gap-3 rounded-2xl border border-rose-300 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-900">
-                <span>⚠ Sériový helper nereaguje. Hlasy nemusia byť zaznamenávané.</span>
-                <a href="{{ route('debug.serial-helper') }}" target="_blank" rel="noopener"
-                    class="rounded-xl bg-rose-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-800">
-                    Otvoriť diagnostiku →
-                </a>
+                <span>Serial Agent nereaguje. Hlasy nemusia byť zaznamenávané.</span>
             </div>
-        @elseif ($helperQueuedFrames > 0)
+        @elseif ($serialAgentQueuedFrames > 0)
             <div class="rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-900">
-                Helper má vo fronte {{ $helperQueuedFrames }} ne-odoslaných rámcov — aplikácia ich postupne doručí.
+                Serial Agent má vo fronte {{ $serialAgentQueuedFrames }} ne-odoslaných rámcov — aplikácia ich postupne doručí.
                 Žiadny hlas sa nestratí.
             </div>
         @endif
@@ -207,35 +201,11 @@
                         </div>
                     </div>
 
-                    @if ($usesExternalAgent && !$serialConnected)
+                    @if (!$serialConnected)
                         <div
                             class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                             Vyber USB zariadenie a klikni Connect v samostatnom okne Serial Agent.
                             Táto konzola začne hlasovanie až keď agent nahlási pripojený transceiver.
-                        </div>
-                    @elseif (!$serialConnected)
-                        <div class="mt-4 space-y-3">
-                            <select wire:model.live="selectedPortPath"
-                                class="w-full rounded-2xl border border-slate-300 px-3 py-2 text-sm">
-                                <option value="">Vyberte port…</option>
-                                @foreach ($availablePorts as $port)
-                                    <option value="{{ $port['path'] }}">
-                                        {{ $port['path'] }}@if (!empty($port['manufacturer']))
-                                            — {{ $port['manufacturer'] }}
-                                        @endif
-                                    </option>
-                                @endforeach
-                            </select>
-                            <div class="flex flex-wrap gap-3">
-                                <button type="button" wire:click="refreshSerialPorts"
-                                    class="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
-                                    Obnoviť zoznam
-                                </button>
-                                <button type="button" wire:click="connectSerial" @disabled(empty($selectedPortPath))
-                                    class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60">
-                                    Pripojiť
-                                </button>
-                            </div>
                         </div>
                     @else
                         <div class="mt-4 space-y-3">

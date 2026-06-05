@@ -34,7 +34,7 @@ class SerialAgentClient
 
             $connection->sendText(json_encode([
                 'type' => 'hello',
-                'token' => SerialHelperTokens::current(),
+                'token' => SerialAgentTokens::current(),
             ], JSON_THROW_ON_ERROR));
 
             $hello = $connection->receive(new TimeoutCancellation(2));

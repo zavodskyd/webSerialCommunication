@@ -21,7 +21,7 @@ class VoteRecorder
      * no Livewire dependency, no UI state. Used by both:
      *
      *  - VotingConsole::recordVoteFromCode (Livewire path)
-     *  - SerialFrameController (Node serial-helper IPC path)
+     *  - SerialAgentFrameHandler (Rust serial-agent bridge path)
      *
      * The $collectorEnabledHint parameter is the in-memory Livewire snapshot
      * of $voting->runtime_collector_enabled. The Livewire caller passes its
@@ -34,7 +34,7 @@ class VoteRecorder
         Voting $voting,
         VotingQuestion $question,
         bool $collectorEnabledHint = false,
-        string $source = 'web-serial',
+        string $source = 'rust-agent',
     ): VoteRecordingResult {
         $result = $this->resolveResult($code, $voting, $question, $collectorEnabledHint);
 

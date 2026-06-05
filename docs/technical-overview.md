@@ -4,7 +4,7 @@ Tento dokument sumarizuje aktuálnu architektúru projektu podľa existujúceho 
 
 ## Architektúra
 
-Projekt je klasická server-side Laravel aplikácia s Blade šablónami a Livewire komponentmi. Samotná komunikácia s hlasovacím zariadením Qomo prebieha na klientovi cez Web Serial API. Backend sa používa na:
+Projekt je server-side Laravel aplikácia s Blade šablónami, Livewire komponentmi a NativePHP runtime. Samotná komunikácia s hlasovacím zariadením Qomo prebieha cez Rust `serial-agent` sidecar a Laravel `serial-agent:bridge`. Backend sa používa na:
 
 - autentifikáciu používateľa,
 - správu databázy zariadení,
@@ -13,13 +13,13 @@ Projekt je klasická server-side Laravel aplikácia s Blade šablónami a Livewi
 
 ## Hlavný používateľský flow
 
-1. Používateľ sa prihlási a otvorí `/dashboard`.
-2. V dashboarde sa vyrenderuje `<livewire:serial-communication />`.
-3. Alpine komponent vyžiada sériový port a otvorí ho.
-4. Frontend odošle inicializačné príkazy.
-5. Po štarte komunikácie frontend číta binárne dáta zo zariadenia.
+1. Native startup spustí Rust `serial-agent` a Laravel `serial-agent:bridge`.
+2. Používateľ sa prihlási a otvorí operátorskú konzolu hlasovania.
+3. Operátor vyberie sériový port v samostatnom Serial Agent okne.
+4. Konzola posiela agentu príkazy `start` / `stop`.
+5. Agent číta binárne dáta zo zariadenia a posiela ich cez lokálny WebSocket bridge.
 6. Dáta sa konvertujú na hex reťazec.
-7. Každý hex reťazec ide do `SerialCommunication::checkCode($code)`.
+7. Každý hex reťazec ide do `SerialAgentFrameHandler` a `VoteRecorder`.
 8. Backend vyhľadá zhodu v tabuľke `devices`.
 9. Výsledok sa zobrazí používateľovi v UI.
 
@@ -67,12 +67,7 @@ Premenná `devices` sa načíta, ale v súčasnom view sa explicitne nepoužíva
 Zodpovednosť:
 
 - UI pre stav pripojenia,
-- výber a otvorenie sériového portu,
-- inicializácia zariadenia,
-- štart/stop čítania,
-- konverzia `ArrayBuffer -> hex`,
-- filtrovanie duplicitných po sebe idúcich kódov,
-- priebežné renderovanie prijatých dát.
+- informácia, že port sa vyberá v samostatnom Serial Agent okne.
 
 Natvrdo zadané parametre:
 

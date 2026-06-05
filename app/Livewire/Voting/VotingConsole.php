@@ -8,7 +8,6 @@ use App\Models\Voting;
 use App\Models\VotingQuestion;
 use App\Services\Voting\VoteRecorder;
 use App\Support\SerialAgentClient;
-use App\Support\SerialHelperClient;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
@@ -40,37 +39,17 @@ class VotingConsole extends Component
 
     public bool $eventsLogVisible = false;
 
-    /**
-     * --- native serial driver state (node-helper / rust-agent) ---
-     */
     public bool $serialConnected = false;
-
-    public ?string $selectedPortPath = null;
 
     public ?string $connectedPortPath = null;
 
-    /**
-     * @var array<int, array{path: string, manufacturer: ?string, vendor_id: ?string, product_id: ?string}>
-     */
-    public array $availablePorts = [];
+    public ?bool $serialAgentHealthy = null;
 
-    /**
-     * Last known helper liveness. null = not probed yet, true = reachable,
-     * false = unreachable / not running. Surfaced as a banner so Dušan sees
-     * the helper drop *before* he starts a question.
-     */
-    public ?bool $helperHealthy = null;
+    public int $serialAgentQueuedFrames = 0;
 
-    public int $helperQueuedFrames = 0;
+    public int $lastSerialAgentHealthAt = 0;
 
-    /**
-     * Unix timestamp of the most recent helper health probe. Used to throttle
-     * the probe to once per HELPER_HEALTH_INTERVAL_SECONDS instead of every
-     * 500 ms tick.
-     */
-    public int $lastHelperHealthAt = 0;
-
-    private const HELPER_HEALTH_INTERVAL_SECONDS = 2;
+    private const SERIAL_AGENT_HEALTH_INTERVAL_SECONDS = 2;
 
     public function mount(Voting $voting, ?VotingQuestion $question = null): void
     {
@@ -91,58 +70,11 @@ class VotingConsole extends Component
         $this->resetQuestionState();
         $this->persistRuntimeState();
         $this->dispatchConsoleState();
-
-        if ($this->isHelperDriver()) {
-            $this->refreshSerialPorts();
-        }
-    }
-
-    public function isHelperDriver(): bool
-    {
-        return config('serial.driver') === 'node-helper';
-    }
-
-    public function isRustAgentDriver(): bool
-    {
-        return config('serial.driver') === 'rust-agent';
-    }
-
-    public function isNativeSerialDriver(): bool
-    {
-        return $this->isHelperDriver() || $this->isRustAgentDriver();
-    }
-
-    public function refreshSerialPorts(): void
-    {
-        $response = SerialHelperClient::call('list_ports');
-
-        $this->availablePorts = is_array($response['ports'] ?? null) ? $response['ports'] : [];
     }
 
     public function connectSerial(): void
     {
-        if ($this->isRustAgentDriver()) {
-            $this->lastVoteMessage = 'Serial zariadenie vyber a pripoj v okne Serial Agent.';
-
-            return;
-        }
-
-        if ($this->selectedPortPath === null || $this->selectedPortPath === '') {
-            return;
-        }
-
-        $open = SerialHelperClient::call('open', ['port_path' => $this->selectedPortPath]);
-
-        if (! ($open['ok'] ?? false)) {
-            $this->lastVoteMessage = 'Nepodarilo sa otvoriť port: '.($open['error'] ?? 'unknown');
-
-            return;
-        }
-
-        SerialHelperClient::call('init');
-
-        $this->serialConnected = true;
-        $this->connectedPortPath = $this->selectedPortPath;
+        $this->lastVoteMessage = 'Serial zariadenie vyber a pripoj v okne Serial Agent.';
     }
 
     public function disconnectSerial(): void
@@ -151,16 +83,7 @@ class VotingConsole extends Component
             return;
         }
 
-        if ($this->isRustAgentDriver()) {
-            app(SerialAgentClient::class)->command('close');
-
-            $this->serialConnected = false;
-            $this->connectedPortPath = null;
-
-            return;
-        }
-
-        SerialHelperClient::call('close');
+        app(SerialAgentClient::class)->command('close');
 
         $this->serialConnected = false;
         $this->connectedPortPath = null;
@@ -192,21 +115,15 @@ class VotingConsole extends Component
 
     public function finishQuestionViaHelper(): void
     {
-        if ($this->isRustAgentDriver()) {
-            app(SerialAgentClient::class)->command('stop');
-        } else {
-            SerialHelperClient::call('stop');
-        }
+        app(SerialAgentClient::class)->command('stop');
 
         $this->finishQuestion();
     }
 
     public function liveTick(): void
     {
-        if ($this->isNativeSerialDriver()) {
-            $this->refreshLastVoteFromEvents();
-            $this->probeHelperHealthIfDue();
-        }
+        $this->refreshLastVoteFromEvents();
+        $this->probeSerialAgentHealthIfDue();
 
         if (! $this->collectorEnabled || ! $this->timerRunning) {
             return;
@@ -222,11 +139,7 @@ class VotingConsole extends Component
         $this->remainingSeconds = max(0, $question->response_time_seconds - $elapsed);
 
         if ($this->remainingSeconds <= 0) {
-            if ($this->isRustAgentDriver()) {
-                app(SerialAgentClient::class)->command('stop');
-            } elseif ($this->isHelperDriver()) {
-                SerialHelperClient::call('stop');
-            }
+            app(SerialAgentClient::class)->command('stop');
 
             $this->finishQuestion(0);
 
@@ -238,26 +151,24 @@ class VotingConsole extends Component
         }
     }
 
-    private function probeHelperHealthIfDue(): void
+    private function probeSerialAgentHealthIfDue(): void
     {
         $now = time();
 
-        if ($now - $this->lastHelperHealthAt < self::HELPER_HEALTH_INTERVAL_SECONDS) {
+        if ($now - $this->lastSerialAgentHealthAt < self::SERIAL_AGENT_HEALTH_INTERVAL_SECONDS) {
             return;
         }
 
-        $this->lastHelperHealthAt = $now;
+        $this->lastSerialAgentHealthAt = $now;
 
-        $response = $this->isRustAgentDriver()
-            ? app(SerialAgentClient::class)->health()
-            : SerialHelperClient::health();
+        $response = app(SerialAgentClient::class)->health();
 
-        $this->helperHealthy = (bool) ($response['ok'] ?? false);
+        $this->serialAgentHealthy = (bool) ($response['ok'] ?? false);
         $this->serialConnected = (bool) ($response['connected'] ?? $this->serialConnected);
         $this->connectedPortPath = is_string($response['selected_port'] ?? null)
             ? $response['selected_port']
             : $this->connectedPortPath;
-        $this->helperQueuedFrames = (int) ($response['queuedFrames'] ?? $response['queued_frames'] ?? 0);
+        $this->serialAgentQueuedFrames = (int) ($response['queued_frames'] ?? 0);
     }
 
     private function refreshLastVoteFromEvents(): void
@@ -523,16 +434,11 @@ class VotingConsole extends Component
     {
         $question = $this->currentQuestion()->load(['options', 'votes']);
 
-        $template = $this->isNativeSerialDriver()
-            ? 'livewire.voting.voting-console-helper'
-            : 'livewire.voting.voting-console';
-
-        return view($template, [
+        return view('livewire.voting.voting-console-helper', [
             'currentQuestion' => $question,
             'questions' => $this->questions()->get(),
             'results' => $question->summarizedResults(),
             'eventsLog' => $this->eventsLogVisible ? $this->recentEventsForCurrentVoting() : collect(),
-            'usesExternalAgent' => $this->isRustAgentDriver(),
         ])->layout('layouts.app')->title('Operátorská konzola');
     }
 
@@ -685,13 +591,7 @@ class VotingConsole extends Component
 
     private function startNativeSerialCollection(): void
     {
-        if ($this->isRustAgentDriver()) {
-            app(SerialAgentClient::class)->command('start');
-
-            return;
-        }
-
-        SerialHelperClient::call('start');
+        app(SerialAgentClient::class)->command('start');
     }
 
     private function elapsedSecondsSince(\DateTimeInterface $startedAt): int

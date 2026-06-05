@@ -27,6 +27,19 @@ test('runPendingMigrations invokes artisan migrate when nativephp is running', f
     expect($bootstrapper->runPendingMigrations())->toBeTrue();
 });
 
+test('runPendingMigrations fails when artisan migrate returns a non-zero exit code', function () {
+    config(['nativephp-internal.running' => true]);
+
+    Artisan::shouldReceive('call')
+        ->once()
+        ->with('migrate', ['--force' => true, '--no-interaction' => true])
+        ->andReturn(1);
+
+    $bootstrapper = new NativeDatabaseBootstrapper;
+
+    $bootstrapper->runPendingMigrations();
+})->throws(RuntimeException::class, 'Native database migration failed with exit code 1.');
+
 test('native install migrations run against the native sqlite database file', function () {
     $repository = Env::getRepository();
     $nativeDatabasePath = tempnam(sys_get_temp_dir(), 'native-db-');

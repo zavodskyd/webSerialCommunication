@@ -63,6 +63,16 @@ Zvolené rozhodnutia:
 - `SerialAgentBridge` v pláne znamená Laravel command, ktorý sa pripája na lokálny WebSocket `rust-agent` sidecaru a routeuje `frame/status/ack`; nejde o WebSerial implementáciu.
 - Operator UI sa nemení funkčne; mení sa len to, že sa zobrazí až po úspešnom native bootstrap procese.
 
+### 5. Cleanup legacy WebSerial a Node helper vetvy
+
+- Po stabilizácii startup workflow odstrániť z aplikácie celé `web-serial` a `node-helper` vetvenie; cieľový stav je jediný podporovaný driver `rust-agent`.
+- `config/serial.php` zmeniť tak, aby default aj explicitne podporovaný driver bol iba `rust-agent`.
+- Z `VotingConsole` odstrániť helper/webserial vetvenie ako `isHelperDriver()`, `SerialHelperClient` volania a všetky flowy pre `open/init/close/start/stop` cez node helper; UI ostane naviazané len na `rust-agent` stav a command API.
+- Odstrániť už nepoužívané helper vrstvy a debug endpointy naviazané na `SerialHelperClient`, `SerialHelperDiagnostics`, internal token HTTP kontroléry a related middleware, ak po prechode na `rust-agent` neostane žiadny spotrebiteľ.
+- Vyčistiť Electron main a ostatné natívne bootstrap časti od poznámok alebo fallbackov pre `web-serial` / `node-helper`, aby bootstrap a runtime explicitne predpokladali len `rust-agent`.
+- Zjednotiť `VoteEvent.source` produkciu na `rust-agent`; historické exporty môžu staré hodnoty čítať, ale nový runtime už nemá generovať `web-serial` ani `node-helper`.
+- Upraviť testy a fixture dáta tak, aby primárny coverage bol len pre `rust-agent`; testy pokrývajúce legacy helper/webserial odstrániť alebo nahradiť migration/backward-compat testami tam, kde sa ešte čítajú historické dáta.
+
 ## Important Interfaces and Artifacts
 
 - Nový interný service/interface: `StartupCoordinator`.
@@ -78,6 +88,7 @@ Zvolené rozhodnutia:
   - `status`
   - `detail`
   - `duration_ms`
+- `config('serial.driver')` sa po cleanupe zužuje na jedinú podporovanú hodnotu `rust-agent`.
 - Žiadne zmeny vo verejných HTTP API ani vo formáte hlasovacích dát.
 
 ## Test Plan
@@ -88,6 +99,8 @@ Zvolené rozhodnutia:
 - Feature test: zlyhanie migrácie neprepíše `last_started_version` a uloží failure state.
 - Feature test: zlyhanie štartu `serial-agent` ukončí startup vo failed stave.
 - Feature test: `SerialAgentBridge` failure sa zobrazí ako startup failure, nie ako tichý Laravel `500`.
+- Feature test: app beží korektne bez `web-serial` a `node-helper` vetvy, pričom operator konzola používa výhradne `rust-agent`.
+- Feature test: historické `VoteEvent` záznamy so source `web-serial` alebo `node-helper` sa stále dajú čítať/exportovať, ak majú zostať podporované pre archivované dáta.
 - Unit test: startup state store správne číta a zapisuje verziu a failure metadata.
 - Unit test: splash progress payload mapuje jednotlivé kroky na očakávané labely.
 - Manual acceptance:
@@ -103,4 +116,5 @@ Zvolené rozhodnutia:
 - `BuildVersion` zostáva zdrojom identifikácie builda; packaged build používa stamped verziu.
 - File-based startup state je správna voľba; nepoužíva sa DB ani cache ako source of truth pre bootstrap rozhodnutia.
 - `Retry` na error splash preferuje znovuspustenie workflow; ak by bol proces po zlyhaní nekonzistentný, implementácia má použiť relaunch appky namiesto in-process retry.
+- Legacy `web-serial` a `node-helper` kód sa po tejto etape považuje za odstrániteľný; backward compatibility sa rieši len pre čítanie historických dát, nie pre beh runtime.
 - Scope nezahŕňa Tauri, zmenu hlasovacej logiky, zmenu serial protokolu ani redizajn operator UI.

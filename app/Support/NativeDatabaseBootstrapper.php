@@ -23,25 +23,37 @@ class NativeDatabaseBootstrapper
         'votes',
     ];
 
-    /**
-     * Apply pending Laravel migrations on the user's local SQLite. MUST run on
-     * every NativePHP boot — not only on first launch — because a returning
-     * user's DB already contains data from a prior build, so seedFromBundled…
-     * skips it. Without this, schema additions (e.g. vote_events) are missing
-     * after an update and queries blow up with 500s.
-     */
     public function runPendingMigrations(): bool
     {
         if (! config('nativephp-internal.running')) {
             return false;
         }
 
-        Artisan::call('migrate', [
+        $exitCode = Artisan::call('migrate', [
             '--force' => true,
             '--no-interaction' => true,
         ]);
 
+        if ($exitCode !== 0) {
+            throw new \RuntimeException("Native database migration failed with exit code {$exitCode}.");
+        }
+
         return true;
+    }
+
+    public function hasApplicationData(): bool
+    {
+        foreach (self::APPLICATION_TABLES as $table) {
+            if (! $this->tableExists(DB::connection(), $table)) {
+                continue;
+            }
+
+            if ((int) DB::table($table)->count() > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function seedFromBundledDatabaseIfEmpty(?string $sourcePath = null): bool
@@ -106,21 +118,6 @@ class NativeDatabaseBootstrapper
         }
 
         return database_path('database.sqlite');
-    }
-
-    private function hasApplicationData(): bool
-    {
-        foreach (self::APPLICATION_TABLES as $table) {
-            if (! $this->tableExists(DB::connection(), $table)) {
-                continue;
-            }
-
-            if ((int) DB::table($table)->count() > 0) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private function tableExists(ConnectionInterface $connection, string $table): bool

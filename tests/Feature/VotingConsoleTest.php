@@ -85,21 +85,19 @@ test('start resumes a paused question without immediately skipping seconds', fun
     Carbon::setTestNow();
 });
 
-test('helper driver: liveTick marks helper as unhealthy when not running', function () {
-    config(['serial.driver' => 'node-helper']);
-
+test('rust agent driver: liveTick marks agent as unhealthy when not running', function () {
     [, $voting] = createConsoleFixture();
 
     $component = app(VotingConsole::class);
     $component->mount($voting);
 
-    expect($component->helperHealthy)->toBeNull();
+    expect($component->serialAgentHealthy)->toBeNull();
 
-    // No helper port file exists in tests, so SerialHelperClient::health() returns ok=false.
+    // No serial-agent port file exists in tests, so SerialAgentClient::health() returns ok=false.
     $component->liveTick();
 
-    expect($component->helperHealthy)->toBeFalse();
-    expect($component->helperQueuedFrames)->toBe(0);
+    expect($component->serialAgentHealthy)->toBeFalse();
+    expect($component->serialAgentQueuedFrames)->toBe(0);
 });
 
 test('rust agent driver keeps collection running while paused and stops only on finish', function () {
@@ -221,27 +219,16 @@ test('events log returns all events for the current question instead of truncati
     expect($eventsLog->every(fn (VoteEvent $event) => $event->voting_question_id === $question->id))->toBeTrue();
 });
 
-test('node helper buffers frames to disk when laravel POST fails', function () {
-    $helper = file_get_contents(base_path('nativephp/electron/serial-helper.cjs'));
+test('native app no longer contains the legacy node serial helper launcher', function () {
+    $mainProcess = file_get_contents(base_path('nativephp/electron/src/main/index.js'));
 
-    // The retry buffer is the conference-day insurance: if Laravel is briefly
-    // unreachable, frames must not be dropped silently.
-    expect($helper)
-        ->toContain('const QUEUE_FILE')
-        ->toContain('serial-helper-queue.jsonl')
-        ->toContain('const QUEUE_DRAIN_INTERVAL_MS')
-        ->toContain('const QUEUE_MAX_ATTEMPTS')
-        ->toContain('function loadQueueFromDisk()')
-        ->toContain('function persistQueue()')
-        ->toContain('function scheduleQueueDrain()')
-        ->toContain('async function drainQueue()')
-        ->toContain('outbox.push(entry)')
-        ->toContain('queuedFrames: outbox.length');
+    expect($mainProcess)
+        ->not->toContain('spawnSerialHelper')
+        ->not->toContain('serial-helper.cjs')
+        ->not->toContain('utilityProcess.fork');
 });
 
-test('helper driver: pause then resume does not count paused wall-clock time toward the timer', function () {
-    config(['serial.driver' => 'node-helper']);
-
+test('rust agent driver: pause then resume does not count paused wall-clock time toward the timer', function () {
     [, $voting, $question] = createConsoleFixture();
 
     // Open the question 5s ago, then pause: 25s should be remaining.
@@ -315,50 +302,32 @@ test('stale native vote requests are accepted once the question is live in runti
     expect(Vote::query()->first()->option_key)->toBe('A');
 });
 
-test('native serial runtime separates connection from transceiver collection', function () {
-    $consoleView = file_get_contents(resource_path('views/livewire/voting/voting-console.blade.php'));
+test('operator console uses only the rust serial agent view', function () {
+    $consoleView = file_get_contents(resource_path('views/livewire/voting/voting-console-helper.blade.php'));
 
+    expect(is_file(resource_path('views/livewire/voting/voting-console.blade.php')))->toBeFalse();
     expect($consoleView)
-        ->toContain('wire:ignore')
-        ->toContain('state.serialPort = await navigator.serial.requestPort();')
-        ->toContain('await initializeDevice();')
-        ->toContain('const startQuestionFromFrontend = async () => {')
-        ->toContain('await startCommunication();')
-        ->toContain("await sendHexCommand('5b80db', 3);")
-        ->toContain("await sendHexCommand('5a80da', 3);")
-        ->toContain('const finishQuestionFromFrontend = async (remainingSeconds = state.remainingSeconds) => {')
-        ->toContain('await stopCommunication();')
-        ->toContain('readerStopPromise: null')
-        ->toContain('state.readerStopPromise = readData();')
-        ->toContain('await waitForReaderStop();')
-        ->toContain('!state.isConnected || state.collectorEnabled || state.preparingQuestionStart')
-        ->toContain('if (state.collectorEnabled || state.preparingQuestionStart) {')
-        ->toContain('if (state.isReading || state.reader || state.readerStopPromise || state.stoppingCommunication) {')
-        ->toContain("window.addEventListener('pagehide', disconnectBeforeLeavingConsole);")
-        ->toContain("document.addEventListener('livewire:navigating', disconnectBeforeLeavingConsole);")
-        ->not->toContain('serialPortFilters')
-        ->not->toContain('!state.isConnected || state.collectorEnabled || state.preparingQuestionStart || state.isReading')
-        ->not->toContain('if (state.collectorEnabled || state.preparingQuestionStart || state.isReading) {')
-        ->not->toContain('wire:click="finishQuestion"');
-
-    expect(substr_count($consoleView, 'await startCommunication();'))->toBe(2);
+        ->toContain('wire:poll.500ms="liveTick"')
+        ->toContain('samostatnom okne Serial Agent')
+        ->toContain('wire:click="startQuestionViaHelper"')
+        ->toContain('wire:click="finishQuestionViaHelper"')
+        ->not->toContain('navigator.serial')
+        ->not->toContain('@script')
+        ->not->toContain('sendHexCommand')
+        ->not->toContain('SerialHelperClient')
+        ->not->toContain('node-helper');
 });
 
-test('native app shows all serial ports for manual usb selection', function () {
+test('native app no longer registers browser web serial handlers', function () {
     $mainProcess = file_get_contents(base_path('nativephp/electron/src/main/index.js'));
 
     expect($mainProcess)
-        ->toContain("import {app, BrowserWindow, ipcMain, session, utilityProcess} from 'electron'")
-        ->toContain("session.defaultSession.on('select-serial-port'")
-        ->toContain('async (event, portList, webContents, callback)')
-        ->toContain('formatSerialPortLabel')
-        ->toContain('showSerialPortPicker')
-        ->toContain('display: flex; flex-direction: column; gap: 8px;')
-        ->toContain('ipcMain.once(channel')
-        ->toContain("'Vyber USB zariadenie'")
-        ->toContain('Number(isVotingUsbAdapter(right)) - Number(isVotingUsbAdapter(left))')
-        ->not->toContain('dialog.showMessageBoxSync')
-        ->not->toContain('const selectedPort = portList.find(isVotingUsbAdapter);');
+        ->toContain("import {app, BrowserWindow, dialog, ipcMain} from 'electron'")
+        ->not->toContain("session.defaultSession.on('select-serial-port'")
+        ->not->toContain('formatSerialPortLabel')
+        ->not->toContain('showSerialPortPicker')
+        ->not->toContain('isVotingUsbAdapter')
+        ->not->toContain('configureWebSerial');
 });
 
 test('native app quits when its last window closes', function () {

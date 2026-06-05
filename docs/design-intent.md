@@ -4,36 +4,25 @@ Tento dokument je zoznam miest, ktoré pri prvom pohľade pôsobia ako bug, ale 
 
 Pridávajte sem ďalšie body, ktoré sa v review opakujú ako "to nie je bug, to je feature".
 
-## Sériový reader v Electron main procese, nie v Blade view
+## Sériový reader mimo Blade view
 
 Pôvodná implementácia mala Web Serial API priamo vo `<script>` bloku Livewire komponenty (`voting-console.blade.php`, ~870 riadkov, z toho ~650 JS). Tento prístup neustále zlyhával na Q2+ (prvých ~5s hlasov stratených, "Pripojené" preblíkavalo, "Odpojiť" nereagoval) kvôli race conditions medzi async JS state a Livewire morph cyklom.
 
-Riešenie: sériový reader teraz beží ako samostatný Node proces v Electron main procese (`electron/serial-helper/`), ktorý komunikuje s Laravelom cez localhost HTTP. Livewire komponent je čistý — bez JS state machinery, bez `@script` bloku, bez Web Serial API.
+Riešenie: sériový reader teraz beží v Rust `serial-agent` sidecar procese, ktorý štartuje native startup koordinátor spolu s Laravel bridge procesom. Livewire komponent je čistý — bez JS state machinery, bez `@script` bloku, bez Web Serial API.
 
 **Architektúra**:
 
-- Driver flag `SERIAL_DRIVER` v `.env` rozhoduje:
-  - `web-serial` (default) — pôvodná Web Serial implementácia, zachovaná pre rollback.
-  - `node-helper` — nový tok cez Node serial-helper.
-- `node-helper` cesta:
-  - Helper skript je **`nativephp/electron/serial-helper.cjs`** (vnútri NativePHP electron balíka, **nie** mimo neho ako samostatný npm projekt). Prípona `.cjs` je nutná lebo `nativephp/electron/package.json` má `"type": "module"` — bez nej Node load-uje súbor ako ESM a `require()` padne.
-  - Závislosť `serialport` je v `nativephp/electron/package.json`. Pri `php artisan native:build win x64` ju **electron-builder automaticky rebuilduje s Win prebuilt binárkami** — žiadny `npm install` na cieľovej Win mašine.
-  - Helper sa spúšťa cez NativePHP `ChildProcess::node()` v `NativeAppServiceProvider::boot()`.
-  - Helper číta sériový port pomocou npm `serialport` knižnice.
-  - Každý 3-byte frame postuje na `POST /internal/serial-frame` (auth cez `X-Internal-Token` bearer + localhost-only middleware).
-  - Pri zlyhaní POSTu (Laravel chvíľu nedostupný) sa frame zaradí do disk JSONL fronty `storage/framework/serial-helper-queue.jsonl` a re-tryuje sa každých 5s. Žiadny hlas sa nestratí pri momentálnom výpadku.
-  - Laravel rieši hlas cez `App\Services\Voting\VoteRecorder` (rovnaký service ako Livewire path).
-  - Operátorská konzola používa `wire:poll.500ms="liveTick"` na refresh — žiadny JS state.
-
-**Build flow pre `node-helper` driver:**
-1. Pridať/zmeniť závislosť v `nativephp/electron/package.json` na Macu → `cd nativephp/electron && npm install` raz, len keď sa zmeni package.json.
-2. `SERIAL_DRIVER=node-helper` v Laravelovom `.env` v root-e repa.
-3. `php artisan native:build win x64` — electron-builder zbalí Win binárky `serialport` do .exe.
-4. Inštalácia .exe na Win — nič manuálne, helper sa spustí pri štarte appky cez NativePHP.
+- Jediný runtime serial driver je `rust-agent`.
+- `App\Support\StartupCoordinator` štartuje Rust agent executable, Laravel bridge (`serial-agent:bridge`) a zapisuje stav do `storage/framework/native-startup-state.json`.
+- Operátor vyberá USB port v samostatnom Serial Agent okne. Konzola len číta stav agenta a posiela príkazy `start` / `stop`.
+- Laravel bridge prijíma rámce cez lokálny WebSocket z agenta a odovzdáva ich do `App\Services\SerialAgent\SerialAgentFrameHandler`.
+- Hlas sa zapisuje cez `App\Services\Voting\VoteRecorder`, so source `rust-agent`.
+- Operátorská konzola používa `wire:poll.500ms="liveTick"` na refresh — žiadny JS state.
+- Historické `VoteEvent.source` hodnoty `web-serial` a `node-helper` sa môžu čítať/exportovať kvôli archivovaným dátam, ale nový runtime ich negeneruje.
 
 **Nepresúvať** sériovú logiku späť do Blade view ani do JS. Bola to bolesť, ktorú nechceme zopakovať.
 
-**Nepresúvať** helper skript späť mimo `nativephp/electron/`. Mal som ho v `electron/serial-helper/` ako samostatný npm projekt — vyžadovalo to `npm install` na cieli, čo na zabalenom .exe nie je možné.
+**Nepridávať** späť Node helper, Web Serial rollback, ani internal HTTP serial endpointy bez samostatného redesignu. Rust agent je jediná podporovaná runtime cesta.
 
 ## Permissive importy
 
@@ -65,7 +54,7 @@ Medzi otázkami sa **nepúšťa** ďalší init — len enable/disable príkazy 
 
 ## Akceptácia "stale" hlasov v native runtime
 
-`VotingConsole::recordVoteFromCode` v live runtime akceptuje aj hlasy, ktoré prídu **po** uplynutí runtime time-limitu (commit `b4f90d6`). Logika: native helper môže poslať batch hlasov s krátkym oneskorením, časovač už medzitým mohol vypršať. Ak by sme stale hlasy zahadzovali, prišli by sme o reálne stlačenia z konca okna.
+`VotingConsole::recordVoteFromCode` v live runtime akceptuje aj hlasy, ktoré prídu **po** uplynutí runtime time-limitu (commit `b4f90d6`). Logika: serial agent môže poslať batch hlasov s krátkym oneskorením, časovač už medzitým mohol vypršať. Ak by sme stale hlasy zahadzovali, prišli by sme o reálne stlačenia z konca okna.
 
 **Nepridávať** check `runtime_remaining_seconds > 0` ani podobnú "deadline enforcement" logiku do prijímania hlasov, kým sa nezmení design helpera.
 

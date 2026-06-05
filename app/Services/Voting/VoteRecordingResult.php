@@ -20,7 +20,7 @@ final readonly class VoteRecordingResult
 
     /**
      * Shape returned by both Livewire's recordVoteFromCode and the internal
-     * SerialFrameController endpoint. Stable contract — JS callers depend on it.
+     * Serial-agent bridge response. Stable contract — UI callers depend on it.
      *
      * @return array{accepted: bool, message: string, lastMatchedDeviceNumber: ?string, lastButtonName: ?string, results: array<int, array{key: string, label: string, color: ?string, vote_count: int, weighted_total: float}>}
      */

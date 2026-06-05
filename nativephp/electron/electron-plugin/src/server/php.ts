@@ -32,11 +32,6 @@ function runningSecureBuild() {
         && process.env.NODE_ENV !== 'development';
 }
 
-function shouldMigrateDatabase(store) {
-    return store.get('migrated_version') !== app.getVersion()
-        && process.env.NODE_ENV !== 'development';
-}
-
 function shouldOptimize(store) {
     /*
      * For some weird reason,
@@ -362,28 +357,6 @@ function serveApp(secret, apiPort, phpIniSettings): Promise<ProcessResult> {
             } else {
                 store.set('optimized_version', app.getVersion())
             }
-        }
-
-        // Migrate the database
-        if (shouldMigrateDatabase(store)) {
-            console.log('Migrating database...');
-
-            if(parseInt(process.env.SHELL_VERBOSITY) > 0) {
-                console.log('Database path:', databaseFile);
-            }
-
-            let result = callPhpSync(['artisan', 'migrate', '--force'], phpOptions, phpIniSettings);
-
-            if (result.status !== 0) {
-                console.error('Failed to migrate database:', result.stderr.toString());
-            } else {
-                store.set('migrated_version', app.getVersion())
-            }
-        }
-
-        if (process.env.NODE_ENV === 'development') {
-            console.log('Skipping Database migration while in development.')
-            console.log('You may migrate manually by running: php artisan native:migrate')
         }
 
         let serverPath: string;

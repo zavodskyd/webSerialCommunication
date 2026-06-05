@@ -196,7 +196,6 @@ test('every call writes one vote_events row regardless of accept/reject', functi
         voting: $voting,
         question: $question,
         collectorEnabledHint: true,
-        source: 'web-serial',
     );
 
     // Rejected vote (valid non-voting button)
@@ -205,19 +204,18 @@ test('every call writes one vote_events row regardless of accept/reject', functi
         voting: $voting,
         question: $question,
         collectorEnabledHint: true,
-        source: 'node-helper',
     );
 
     expect(VoteEvent::query()->count())->toBe(2);
 
     $accepted = VoteEvent::query()->where('accepted', true)->first();
-    expect($accepted->source)->toBe('web-serial');
+    expect($accepted->source)->toBe('rust-agent');
     expect($accepted->raw_hex)->toBe(qomoFrameFor(1, 'A'));
     expect($accepted->button_name)->toBe('A');
     expect($accepted->device_id)->toBe($device->id);
 
     $rejected = VoteEvent::query()->where('accepted', false)->first();
-    expect($rejected->source)->toBe('node-helper');
+    expect($rejected->source)->toBe('rust-agent');
     expect($rejected->rejection_reason)->toBe('non_voting_button');
     expect($rejected->button_name)->toBe('Ruka');
     expect($rejected->device_id)->toBe($device->id);

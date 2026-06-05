@@ -9,7 +9,7 @@ use App\Support\SerialAgentFiles;
 use App\Support\SerialAgentMode;
 use App\Support\SerialAgentStatus;
 use App\Support\SerialAgentTestMonitor;
-use App\Support\SerialHelperTokens;
+use App\Support\SerialAgentTokens;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -49,7 +49,7 @@ class SerialAgentBridge extends Command
 
         $connection->sendText(json_encode([
             'type' => 'hello',
-            'token' => SerialHelperTokens::current(),
+            'token' => SerialAgentTokens::current(),
         ], JSON_THROW_ON_ERROR));
 
         $hello = $connection->receive(new TimeoutCancellation(5));

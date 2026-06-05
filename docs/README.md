@@ -1,10 +1,10 @@
 # Serial Communication
 
-Laravel 11 aplikácia na komunikáciu s hlasovacím zariadením Qomo cez Web Serial API, párovanie prijatých hex kódov na zariadenia uložené v databáze a import mapovania kódov z CSV alebo externej SQLite databázy.
+Laravel aplikácia na komunikáciu s hlasovacím zariadením Qomo cez Rust `serial-agent`, párovanie prijatých hex kódov na zariadenia uložené v databáze a import mapovania kódov z CSV alebo externej SQLite databázy.
 
 ## Čo projekt robí
 
-- pripojí sa k zariadeniu cez Web Serial API v prehliadači,
+- pripojí sa k zariadeniu cez natívny Rust `serial-agent`,
 - odošle inicializačné a štartovacie hex príkazy do zariadenia,
 - číta prichádzajúce hex hodnoty zo sériového portu,
 - porovná ich s tabuľkou `devices`,
@@ -26,7 +26,7 @@ Laravel 11 aplikácia na komunikáciu s hlasovacím zariadením Qomo cez Web Ser
 - `app/Livewire/SerialCommunication.php`
   Serverová časť Livewire komponentu. Načíta zoznam zariadení a mapuje prijaté kódy na konkrétne tlačidlá `A-F` a `Ruka`.
 - `resources/views/livewire/serial-communication.blade.php`
-  Frontend logika pre Web Serial API. Ovláda pripojenie, inicializáciu zariadenia, čítanie dát a volanie Livewire akcie `checkCode()`.
+  Jednoduchý diagnostický panel. Runtime serial port už vyberá samostatné Serial Agent okno, nie browser Web Serial API.
 - `app/Http/Controllers/DeviceController.php`
   Import zariadení z CSV a z externej SQLite databázy z externej C# hlasovacej aplikácie.
 - `app/Models/Device.php`
@@ -90,23 +90,24 @@ Oba importy používajú `updateOrCreate`, takže záznam sa identifikuje podľa
 
 ### 3. Sériová komunikácia
 
-Na dashboarde Livewire komponent:
+Runtime serial komunikácia ide cez Rust `serial-agent`, nie cez browser API v Livewire komponente:
 
-1. vyžiada od používateľa výber sériového portu,
-2. otvorí port s nastavením:
+1. native startup spustí Rust agent a Laravel `serial-agent:bridge`,
+2. operátor vyberie sériový port v samostatnom Serial Agent okne,
+3. agent otvorí port s nastavením:
    `baudRate=28800`, `dataBits=8`, `parity=none`, `stopBits=1`, `flowControl=none`,
-3. po pripojení odošle inicializačné príkazy:
+4. po pripojení odošle inicializačné príkazy:
    `f400c00236`, `f500000101f5`, `f54b4e050200000601f0`,
-4. po kliknutí na "Začať komunikáciu" odošle:
+5. pri štarte zberu odošle:
    `5b80db`, `5a80da`,
-5. priebežne číta prijaté bajty, prevádza ich na hex a posiela ich na serverové `checkCode()`,
-6. ak kód nájde v databáze, zobrazí názov zariadenia a názov tlačidla.
+6. priebežne číta prijaté bajty, prevádza ich na hex a posiela ich cez bridge do `SerialAgentFrameHandler`,
+7. ak kód nájde v databáze, konzola zobrazí názov zariadenia a názov tlačidla.
 
 Komunikácia vznikla reverzným odpozorovaním originálneho softvéru a pripojeného transmittera. Význam jednotlivých inicializačných hex príkazov dnes nie je zdokumentovaný, ale aktuálna sekvencia je potrebná na funkčnú komunikáciu.
 
-## Požiadavky na prehliadač
+## Požiadavky na native runtime
 
-Web Serial API musí byť dostupné v prehliadači. Prakticky to znamená moderný Chromium-based prehliadač a vhodný kontext, v ktorom `navigator.serial` existuje. Ak API nie je dostupné, komponent zobrazí chybu už pri inicializácii.
+Zabalená NativePHP aplikácia musí obsahovať Rust `serial-agent` executable a zapisovateľný `storage/framework` adresár pre port, token, status a startup state súbory. Prehliadačová Web Serial podpora už nie je runtime fallback.
 
 ## Dátový model
 

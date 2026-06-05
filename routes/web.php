@@ -2,9 +2,6 @@
 
 use App\Http\Controllers\DatabaseBackupController;
 use App\Http\Controllers\DeviceController;
-use App\Http\Controllers\Internal\SerialControlController;
-use App\Http\Controllers\Internal\SerialFrameController;
-use App\Http\Controllers\SerialHelperDebugController;
 use App\Http\Controllers\VoteEventsExportController;
 use App\Http\Controllers\VotingExportController;
 use App\Http\Controllers\VotingLogoController;
@@ -21,9 +18,6 @@ Route::redirect('/', '/votings');
 
 Route::view('test', 'test')
     ->name('test');
-
-Route::get('/debug/serial-helper', SerialHelperDebugController::class)
-    ->name('debug.serial-helper');
 
 Route::post('/import-devices', [DeviceController::class, 'import'])->name('import.devices');
 Route::get('/import-devices', [DeviceController::class, 'index'])->name('import.devices');
@@ -52,10 +46,3 @@ Route::get('/votings/{voting}/exports/pressed-options/pdf', [VotingExportControl
     ->name('votings.exports.pressed-options.pdf');
 Route::get('/votings/{voting}/questions/{question}/events.csv', VoteEventsExportController::class)
     ->name('votings.questions.events-export');
-
-Route::middleware(['localhost-only', 'internal-token'])
-    ->prefix('internal')
-    ->group(function () {
-        Route::post('/serial-frame', SerialFrameController::class)->name('internal.serial-frame');
-        Route::post('/serial-control', SerialControlController::class)->name('internal.serial-control');
-    });

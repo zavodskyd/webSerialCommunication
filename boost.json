@@ -3,7 +3,7 @@
         "codex",
         "claude_code"
     ],
-    "cloud": true,
+    "cloud": false,
     "guidelines": true,
     "mcp": true,
     "nightwatch": false,

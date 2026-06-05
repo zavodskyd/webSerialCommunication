@@ -8,6 +8,7 @@ use App\Models\Voting;
 use App\Models\VotingQuestion;
 use App\Services\Voting\VoteRecorder;
 use App\Support\SerialAgentClient;
+use App\Support\SerialAgentMode;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
@@ -53,6 +54,8 @@ class VotingConsole extends Component
 
     public function mount(Voting $voting, ?VotingQuestion $question = null): void
     {
+        SerialAgentMode::clear();
+
         $this->voting = $voting;
         $this->devices = Device::query()
             ->ordered()
@@ -591,6 +594,8 @@ class VotingConsole extends Component
 
     private function startNativeSerialCollection(): void
     {
+        SerialAgentMode::clear();
+
         app(SerialAgentClient::class)->command('start');
     }
 

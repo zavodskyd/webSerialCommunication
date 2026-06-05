@@ -8,7 +8,9 @@ use App\Models\VoteEvent;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
 use App\Models\VotingQuestion;
+use App\Services\SerialAgent\SerialAgentFrameHandler;
 use App\Support\SerialAgentClient;
+use App\Support\SerialAgentMode;
 use Illuminate\Support\Carbon;
 
 test('pause keeps collector active and still accepts votes', function () {
@@ -126,6 +128,33 @@ test('rust agent driver keeps collection running while paused and stops only on 
 
     $component->finishQuestionViaHelper();
     expect($component->collectorEnabled)->toBeFalse();
+});
+
+test('entering operator console clears serial agent test mode before frames are handled', function () {
+    [, $voting] = createConsoleFixture();
+
+    SerialAgentMode::activateTest();
+
+    $client = $this->mock(SerialAgentClient::class);
+    $client->shouldReceive('command')->once()->with('start')->andReturn(['ok' => true]);
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+
+    expect(SerialAgentMode::current())->toBeNull();
+
+    $component->serialConnected = true;
+
+    $component->startQuestionViaHelper();
+
+    $result = app(SerialAgentFrameHandler::class)->handle(qomoFrameFor(1, 'A'));
+
+    expect($result)->not->toBeNull();
+    expect($result->accepted)->toBeTrue();
+    expect(Vote::query()->count())->toBe(1);
+    expect(Vote::query()->first()->option_key)->toBe('A');
+
+    SerialAgentMode::clear();
 });
 
 test('rust agent driver can start collection with the timer paused', function () {

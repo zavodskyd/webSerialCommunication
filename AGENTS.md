@@ -214,27 +214,111 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 @RTK.md
 
+## Project context
+
+This is a Laravel + NativePHP + Rust desktop application.
+
+Main areas:
+- Laravel/PHP application logic: app/, routes/, config/, database/
+- NativePHP desktop integration: nativephp/ and related config
+- Frontend/assets: resources/, package.json, vite config
+- Rust/native layer: src-tauri/, crates/, Cargo.toml, Cargo.lock
+
+## Mandatory Codex workflow
+
+Before reading many files manually, always query the Gortex MCP server first.
+
+Use Gortex for:
+- repository map and module discovery
+- symbol search
+- finding usages
+- dependency and dependent analysis
+- call chains
+- impact analysis before edits
+- editing context before modifying code
+- test target discovery after changes
+
+Do not rely only on grep/read for architecture questions.
+For any non-trivial change, first ask Gortex for the relevant symbols, callers, dependencies and editing context.
+
+## Before making changes
+
+1. Use Gortex to identify affected files and symbols.
+2. Explain the expected impact.
+3. Make the smallest safe change.
+4. Run relevant tests or static checks.
+
+## Laravel conventions
+
+Prefer Laravel-native patterns:
+- Form Requests for validation
+- Actions/Services for business logic
+- Events/Listeners for side effects
+- Jobs for async work
+- migrations for schema changes
+- Pest/PHPUnit tests when changing behavior
+
+## NativePHP/Rust conventions
+
+When touching NativePHP or Rust bridge code:
+- verify PHP ↔ native command boundaries
+- check serialization/contracts between PHP/JS/Rust
+- avoid changing public command names without updating all callers
+- run Rust checks when Rust code changes
+
+<!-- gortex:communities:start -->
+<!-- gortex:skills:start -->
+## Community Skills
+
+| Area | Description | Skill |
+|------|-------------|-------|
+| Request | 184 symbols | `/gortex-request` |
+| App | 143 symbols | `/gortex-app` |
+| Db | 105 symbols | `/gortex-db` |
+| View | 79 symbols | `/gortex-view` |
+| Route | 78 symbols | `/gortex-route` |
+| Storage | 71 symbols | `/gortex-storage` |
+| Session | 66 symbols | `/gortex-session` |
+| Cache | 58 symbols | `/gortex-cache` |
+| Auth | 58 symbols | `/gortex-auth` |
+| Src Server 1 Dirs Getdefaultenvironmentvariables | 56 symbols | `/gortex-src-server-1-dirs-getdefaultenvironmentvariables` |
+| File | 53 symbols | `/gortex-file` |
+| Queue | 53 symbols | `/gortex-queue` |
+| Schema | 47 symbols | `/gortex-schema` |
+| 1 Dirs Bootstrapapp | 46 symbols | `/gortex-1-dirs-bootstrapapp` |
+| Url | 45 symbols | `/gortex-url` |
+| Livewire Voting Votingconsole | 45 symbols | `/gortex-livewire-voting-votingconsole` |
+| Libs Menubar 1 Dirs | 44 symbols | `/gortex-libs-menubar-1-dirs` |
+| Blade | 42 symbols | `/gortex-blade` |
+| Bus | 41 symbols | `/gortex-bus` |
+| Serial Agent Src New | 39 symbols | `/gortex-serial-agent-src-new` |
+<!-- gortex:skills:end -->
+
+<!-- gortex:communities:end -->
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **webSerialCommunication** (1943 symbols, 4195 relationships, 145 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **webSerialCommunication** (6150 symbols, 11493 relationships, 222 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
 ## Always Do
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user. For unified PDG impact, add `mode: "pdg"` with optional `line: <N>` — it returns statement-level `affectedStatements` over CDG + REACHING_DEF and inter-procedural symbols in `interproceduralByDepth`/`byDepth`; no-layer/degraded PDG results are UNKNOWN-risk notes (`--pdg` layer).
+- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
 - **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
+- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
+- For control/data dependence, `pdg_query({mode: "controls", target: "fileOrSymbol"})` answers "under what condition does X run?" (CDG, incl. guard clauses) and `pdg_query({mode: "flows", target, variable})` traces "where does variable Y flow?" (REACHING_DEF). `--pdg` layer.
 
 ## Never Do
 
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER edit a function, class, or method without first running `impact` on it.
 - NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
+- NEVER commit changes without running `detect_changes()` to check affected scope.
 
 ## Resources
 

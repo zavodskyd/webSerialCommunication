@@ -67,7 +67,7 @@ class VotingConsole extends Component
             abort(404);
         }
 
-        $currentQuestion ??= $this->questions()->firstOrFail();
+        $currentQuestion ??= $this->firstDraftQuestion();
 
         $this->currentQuestionId = $currentQuestion->id;
         $this->resetQuestionState();
@@ -512,6 +512,14 @@ class VotingConsole extends Component
     {
         return $this->voting->questions()
             ->orderBy('order');
+    }
+
+    private function firstDraftQuestion(): VotingQuestion
+    {
+        return $this->questions()
+            ->where('status', 'draft')
+            ->first()
+            ?? $this->questions()->firstOrFail();
     }
 
     private function isQuestionActive(): bool

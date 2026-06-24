@@ -308,6 +308,29 @@ test('start returns immediate console state for native serial runtime', function
     ]);
 });
 
+test('operator console selects the first draft question on entry', function () {
+    [, $voting, $firstQuestion] = createConsoleFixture();
+
+    $secondQuestion = $voting->createQuestionWithDefaults(
+        order: 2,
+        label: 'Hlasovanie 2',
+        text: 'Druhá otázka',
+        responseTimeSeconds: 20,
+    );
+
+    $firstQuestion->update([
+        'status' => 'closed',
+        'opened_at' => now()->subMinute(),
+        'closed_at' => now(),
+    ]);
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+
+    expect($component->currentQuestionId)->toBe($secondQuestion->id);
+    expect($voting->fresh()->current_voting_question_id)->toBe($secondQuestion->id);
+});
+
 test('stale native vote requests are accepted once the question is live in runtime state', function () {
     [, $voting, , $device] = createConsoleFixture();
 

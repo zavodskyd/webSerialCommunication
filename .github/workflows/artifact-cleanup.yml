@@ -1,0 +1,62 @@
+name: Artifact Cleanup
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Windows NativePHP Build
+    types:
+      - completed
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: Delete old build artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Delete artifacts older than one week
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const artifactNames = [
+              'serial-agent-win64',
+              'nativephp-installer-with-serial-agent',
+            ];
+            const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+            const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+
+            for (const artifactName of artifactNames) {
+              const matchingArtifacts = artifacts
+                .filter((artifact) => artifact.name === artifactName)
+                .sort((left, right) => new Date(right.created_at) - new Date(left.created_at));
+
+              const latestArtifact = matchingArtifacts[0];
+
+              for (const artifact of matchingArtifacts.slice(1)) {
+                if (new Date(artifact.created_at).getTime() >= cutoff) {
+                  continue;
+                }
+
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+
+                core.info(`Deleted ${artifact.name} artifact ${artifact.id} from ${artifact.created_at}.`);
+              }
+
+              if (latestArtifact) {
+                core.info(`Kept latest ${artifactName} artifact ${latestArtifact.id} from ${latestArtifact.created_at}.`);
+              }
+            }

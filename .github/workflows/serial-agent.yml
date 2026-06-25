@@ -125,6 +125,8 @@ jobs:
           New-Item -ItemType Directory -Force bootstrap/cache | Out-Null
 
       - name: Install composer dependencies
+        env:
+          COMPOSER_MAX_PARALLEL_HTTP: 1
         run: composer install --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader
 
       - name: Install npm dependencies

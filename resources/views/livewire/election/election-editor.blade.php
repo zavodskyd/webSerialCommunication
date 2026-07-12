@@ -4,7 +4,7 @@
     @endif
 
     <div class="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
-        <div><a href="{{ route('elections.index') }}" wire:navigate class="text-sm font-semibold text-emerald-700 hover:text-emerald-900">← Späť na voľby</a><h1 class="mt-3 text-4xl font-semibold tracking-tight text-slate-900">{{ $name }}</h1></div>
+        <div><a href="{{ route('elections.index') }}" wire:navigate class="text-sm font-semibold text-emerald-700 hover:text-emerald-900">← Späť na voľby</a><h1 class="mt-3 text-4xl font-semibold tracking-tight text-slate-900">{{ $name }}</h1><a href="{{ route('elections.candidate-admissions', $voting) }}" wire:navigate class="mt-3 inline-block text-sm font-semibold text-emerald-700">Doplnenie kandidáta →</a></div>
 
         <section class="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200/80">
             <h2 class="text-2xl font-semibold text-slate-900">Detail volieb</h2>

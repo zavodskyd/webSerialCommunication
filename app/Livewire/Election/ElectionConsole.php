@@ -34,16 +34,17 @@ class ElectionConsole extends Component
         $this->voting = $voting;
         $this->election = $voting->election()->firstOrFail();
         $this->contestId = $this->election->contests()->value('id');
-        app(PresentationRuntimeManager::class)->activate($this->voting, 'election_contest', ['contest_id' => $this->contestId]);
+        $this->selectContest($this->contestId, app(PresentationRuntimeManager::class));
     }
 
     public function selectContest(int $contestId, PresentationRuntimeManager $runtime): void
     {
         $contest = $this->election->contests()->findOrFail($contestId);
         $this->contestId = $contest->id;
-        $this->roundId = null;
+        $round = $contest->rounds()->latest('round_number')->first();
+        $this->roundId = $round?->id;
         $this->candidateId = null;
-        $runtime->activate($this->voting, 'election_contest', ['contest_id' => $contest->id]);
+        $runtime->activate($this->voting, $round ? 'election_round' : 'election_contest', $round ? ['round_id' => $round->id] : ['contest_id' => $contest->id]);
     }
 
     public function createRound(ElectionRoundManager $rounds, PresentationRuntimeManager $runtime): void

@@ -56,6 +56,9 @@ class ElectionEditor extends Component
      */
     public array $groupRows = [];
 
+    /** @var list<string> */
+    public array $groupNameOptions = ['Hliny', 'Solinky', 'Vlčince', 'Rozptyl/Staré Mesto'];
+
     public function mount(Voting $voting): void
     {
         abort_unless($voting->voting_type === 'election', 404);
@@ -99,6 +102,8 @@ class ElectionEditor extends Component
             'auto_show_results' => $validated['autoShowResults'],
         ]);
 
+        $this->voting->refresh();
+
         session()->flash('status', 'Voľby boli uložené.');
     }
 
@@ -127,7 +132,32 @@ class ElectionEditor extends Component
 
         $this->candidateDrafts[$contestId] = ['first_name' => '', 'last_name' => ''];
         $this->loadContests();
+        $this->dispatch('focus-candidate-first-name', contestId: $contestId);
         session()->flash('status', 'Kandidát bol pridaný do súťaže.');
+    }
+
+    public function saveCandidate(int $candidateId): void
+    {
+        $candidate = $this->findCandidate($candidateId);
+
+        foreach ($this->contestRows as $contest) {
+            foreach ($contest['candidates'] as $candidateRow) {
+                if ($candidateRow['id'] === $candidateId) {
+                    $validated = validator(['candidate' => $candidateRow], [
+                        'candidate.first_name' => ['required', 'string', 'max:255'],
+                        'candidate.last_name' => ['required', 'string', 'max:255'],
+                    ])->validate();
+
+                    $candidate->update($validated['candidate']);
+                    $this->loadContests();
+                    session()->flash('status', 'Kandidát bol uložený.');
+
+                    return;
+                }
+            }
+        }
+
+        abort(404);
     }
 
     public function removeCandidate(int $candidateId): void
@@ -145,29 +175,24 @@ class ElectionEditor extends Component
 
     public function addDeviceGroup(): void
     {
+        if ($this->availableGroupNames() === []) {
+            $this->addError('groupRows', 'Všetky dostupné názvy skupín už boli pridané.');
+
+            return;
+        }
+
         $this->groupRows[] = [
             'id' => null,
-            'name' => '',
+            'name' => $this->availableGroupNames()[0],
             'is_active' => true,
-            'ranges' => [['start_number' => '', 'end_number' => '']],
+            'range' => ['start_number' => '', 'end_number' => ''],
         ];
-    }
-
-    public function addDeviceGroupRange(int $groupIndex): void
-    {
-        $this->groupRows[$groupIndex]['ranges'][] = ['start_number' => '', 'end_number' => ''];
     }
 
     public function removeDeviceGroup(int $groupIndex): void
     {
         unset($this->groupRows[$groupIndex]);
         $this->groupRows = array_values($this->groupRows);
-    }
-
-    public function removeDeviceGroupRange(int $groupIndex, int $rangeIndex): void
-    {
-        unset($this->groupRows[$groupIndex]['ranges'][$rangeIndex]);
-        $this->groupRows[$groupIndex]['ranges'] = array_values($this->groupRows[$groupIndex]['ranges']);
     }
 
     public function saveDeviceGroups(): void
@@ -179,15 +204,14 @@ class ElectionEditor extends Component
                 'groupRows.*.id' => ['nullable', 'integer'],
                 'groupRows.*.name' => ['required', 'string', 'max:255'],
                 'groupRows.*.is_active' => ['required', 'boolean'],
-                'groupRows.*.ranges' => ['required', 'array', 'min:1'],
-                'groupRows.*.ranges.*.start_number' => ['required', 'integer', 'min:1'],
-                'groupRows.*.ranges.*.end_number' => ['required', 'integer', 'min:1'],
+                'groupRows.*.range.start_number' => ['required', 'integer', 'min:1'],
+                'groupRows.*.range.end_number' => ['required', 'integer', 'min:1'],
             ],
             [],
             [
                 'groupRows.*.name' => 'názov skupiny',
-                'groupRows.*.ranges.*.start_number' => 'začiatok rozsahu',
-                'groupRows.*.ranges.*.end_number' => 'koniec rozsahu',
+                'groupRows.*.range.start_number' => 'začiatok rozsahu',
+                'groupRows.*.range.end_number' => 'koniec rozsahu',
             ],
         )->validate();
 
@@ -209,7 +233,7 @@ class ElectionEditor extends Component
                 );
 
                 $group->ranges()->delete();
-                $group->ranges()->createMany($groupRow['ranges']);
+                $group->ranges()->create($groupRow['range']);
                 $savedGroupIds[] = $group->id;
             }
 
@@ -273,12 +297,10 @@ class ElectionEditor extends Component
                 'id' => $group->id,
                 'name' => $group->name,
                 'is_active' => $group->is_active,
-                'ranges' => $group->ranges
-                    ->map(fn ($range): array => [
-                        'start_number' => (string) $range->start_number,
-                        'end_number' => (string) $range->end_number,
-                    ])
-                    ->all(),
+                'range' => [
+                    'start_number' => (string) $group->ranges->first()?->start_number,
+                    'end_number' => (string) $group->ranges->first()?->end_number,
+                ],
             ])
             ->all();
     }
@@ -286,6 +308,20 @@ class ElectionEditor extends Component
     private function findContest(int $contestId): ElectionContest
     {
         return $this->election->contests()->whereKey($contestId)->firstOrFail();
+    }
+
+    private function findCandidate(int $candidateId): ElectionCandidate
+    {
+        return ElectionCandidate::query()
+            ->whereKey($candidateId)
+            ->whereHas('contest', fn ($query) => $query->where('election_id', $this->election->id))
+            ->firstOrFail();
+    }
+
+    /** @return list<string> */
+    public function availableGroupNames(): array
+    {
+        return array_values(array_diff($this->groupNameOptions, array_column($this->groupRows, 'name')));
     }
 
     /**
@@ -296,20 +332,18 @@ class ElectionEditor extends Component
         $ranges = [];
 
         foreach ($groups as $groupIndex => $group) {
-            foreach ($group['ranges'] as $rangeIndex => $range) {
-                if ($range['start_number'] > $range['end_number']) {
-                    $this->addError("groupRows.{$groupIndex}.ranges.{$rangeIndex}.end_number", 'Koniec rozsahu musí byť väčší alebo rovný začiatku.');
+            $range = $group['range'];
+            if ($range['start_number'] > $range['end_number']) {
+                $this->addError("groupRows.{$groupIndex}.range.end_number", 'Koniec rozsahu musí byť väčší alebo rovný začiatku.');
 
-                    return false;
-                }
-
-                $ranges[] = [
-                    'start_number' => $range['start_number'],
-                    'end_number' => $range['end_number'],
-                    'group_index' => $groupIndex,
-                    'range_index' => $rangeIndex,
-                ];
+                return false;
             }
+
+            $ranges[] = [
+                'start_number' => $range['start_number'],
+                'end_number' => $range['end_number'],
+                'group_index' => $groupIndex,
+            ];
         }
 
         usort($ranges, fn (array $left, array $right): int => $left['start_number'] <=> $right['start_number']);
@@ -317,7 +351,7 @@ class ElectionEditor extends Component
         for ($index = 1; $index < count($ranges); $index++) {
             if ($ranges[$index]['start_number'] <= $ranges[$index - 1]['end_number']) {
                 $this->addError(
-                    "groupRows.{$ranges[$index]['group_index']}.ranges.{$ranges[$index]['range_index']}.start_number",
+                    "groupRows.{$ranges[$index]['group_index']}.range.start_number",
                     'Rozsahy zariadení sa nesmú prekrývať.',
                 );
 

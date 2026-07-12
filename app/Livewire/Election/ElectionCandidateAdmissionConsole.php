@@ -60,11 +60,40 @@ class ElectionCandidateAdmissionConsole extends Component
         session()->flash('status', 'Doplnenie kandidáta je otvorené.');
     }
 
-    public function render(): View
+    public function resolveAdmission(int $admissionId, ElectionCandidateAdmissionManager $admissions, PresentationRuntimeManager $runtime): void
     {
+        $admission = ElectionCandidateAdmission::query()
+            ->where('election_id', $this->election->id)
+            ->findOrFail($admissionId);
+
+        $admission = $admissions->resolve($admission);
+        $activeRuntime = $runtime->current();
+
+        if ($activeRuntime->content_type === 'candidate_admission'
+            && (int) ($activeRuntime->context['admission_id'] ?? 0) === $admission->id) {
+            $runtime->clear();
+        }
+
+        session()->flash('status', $admission->status === 'accepted'
+            ? 'Kandidát bol doplnený do kandidátky.'
+            : 'Kandidát nebol doplnený.');
+    }
+
+    public function render(ElectionCandidateAdmissionManager $admissions, PresentationRuntimeManager $runtime): View
+    {
+        $activeRuntime = $runtime->current();
+        $activeAdmission = $activeRuntime->content_type === 'candidate_admission'
+            ? ElectionCandidateAdmission::query()
+                ->with('contest')
+                ->where('election_id', $this->election->id)
+                ->find($activeRuntime->context['admission_id'] ?? 0)
+            : null;
+
         return view('livewire.election.election-candidate-admission-console', [
             'groups' => $this->election->deviceGroups()->where('is_active', true)->get(),
-            'admissions' => ElectionCandidateAdmission::query()->where('election_id', $this->election->id)->latest()->get(),
+            'admissions' => ElectionCandidateAdmission::query()->where('election_id', $this->election->id)->with('contest')->withCount('votes')->latest()->get(),
+            'activeAdmission' => $activeAdmission,
+            'activeResults' => $activeAdmission ? $admissions->summarizedResults($activeAdmission) : [],
         ])->layout('layouts.app')->title('Doplnenie kandidáta');
     }
 

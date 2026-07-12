@@ -5,15 +5,25 @@ declare(strict_types=1);
 namespace App\Services\SerialAgent;
 
 use App\Models\Voting;
+use App\Services\ElectionCandidateAdmissionFrameRecorder;
 use App\Services\Voting\VoteRecorder;
 use App\Services\Voting\VoteRecordingResult;
 
 class SerialAgentFrameHandler
 {
-    public function __construct(private readonly VoteRecorder $recorder) {}
+    public function __construct(
+        private readonly VoteRecorder $recorder,
+        private readonly ElectionCandidateAdmissionFrameRecorder $admissionRecorder,
+    ) {}
 
     public function handle(string $hex): ?VoteRecordingResult
     {
+        $admissionResult = $this->admissionRecorder->recordIfActive($hex);
+
+        if ($admissionResult !== null) {
+            return $admissionResult;
+        }
+
         $voting = Voting::query()
             ->whereNotNull('current_voting_question_id')
             ->where('runtime_collector_enabled', true)

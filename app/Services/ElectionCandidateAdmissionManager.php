@@ -10,6 +10,34 @@ use Illuminate\Support\Facades\DB;
 
 class ElectionCandidateAdmissionManager
 {
+    /**
+     * @return array<int, array{key: string, label: string, color: ?string, vote_count: int, weighted_total: float}>
+     */
+    public function summarizedResults(ElectionCandidateAdmission $admission): array
+    {
+        $totals = $admission->votes()
+            ->selectRaw('option_key, count(*) as vote_count, coalesce(sum(weight_snapshot), 0) as weighted_total')
+            ->groupBy('option_key')
+            ->get()
+            ->keyBy('option_key');
+
+        return collect([
+            'A' => ['label' => 'Za', 'color' => 'emerald'],
+            'B' => ['label' => 'Proti', 'color' => 'rose'],
+            'C' => ['label' => 'Zdržal sa', 'color' => 'slate'],
+        ])->map(static function (array $definition, string $key) use ($totals): array {
+            $total = $totals->get($key);
+
+            return [
+                'key' => $key,
+                'label' => $definition['label'],
+                'color' => $definition['color'],
+                'vote_count' => (int) ($total?->vote_count ?? 0),
+                'weighted_total' => (float) ($total?->weighted_total ?? 0),
+            ];
+        })->values()->all();
+    }
+
     public function open(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
     {
         if ($admission->contest->key === 'chairperson') {

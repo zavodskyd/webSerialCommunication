@@ -75,6 +75,18 @@ class ElectionRoundManager
                 throw new \InvalidArgumentException('Zariadenie nemá platnú váhu hlasu.');
             }
 
+            $existingVotes = ElectionRoundVote::query()
+                ->where('election_round_id', $round->id)
+                ->where('device_id', $device->id);
+            if ($round->contest->key === 'chairperson') {
+                $firstVote = $existingVotes->first();
+                if ($firstVote !== null) {
+                    return $firstVote;
+                }
+            } elseif ($existingVotes->where('election_round_candidate_id', '!=', $candidate->id)->count() >= $round->contest->seat_count) {
+                throw new \InvalidArgumentException('Zariadenie už podporilo maximálny počet kandidátov v tomto kole.');
+            }
+
             return ElectionRoundVote::query()->updateOrCreate(
                 ['election_round_candidate_id' => $candidate->id, 'device_id' => $device->id],
                 ['election_round_id' => $round->id, 'weight_snapshot' => $attendee->weight, 'voted_at' => now()],

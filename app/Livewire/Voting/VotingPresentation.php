@@ -3,9 +3,11 @@
 namespace App\Livewire\Voting;
 
 use App\Models\ElectionCandidateAdmission;
+use App\Models\ElectionRound;
 use App\Models\Voting;
 use App\Models\VotingQuestion;
 use App\Services\ElectionCandidateAdmissionManager;
+use App\Services\ElectionRoundManager;
 use App\Support\PresentationRuntimeManager;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
@@ -30,7 +32,7 @@ class VotingPresentation extends Component
         }
     }
 
-    public function render(PresentationRuntimeManager $runtime, ElectionCandidateAdmissionManager $admissions): View
+    public function render(PresentationRuntimeManager $runtime, ElectionCandidateAdmissionManager $admissions, ElectionRoundManager $rounds): View
     {
         $this->voting->refresh();
 
@@ -38,9 +40,14 @@ class VotingPresentation extends Component
         $admission = $activeRuntime->content_type === 'candidate_admission'
             ? ElectionCandidateAdmission::query()->with(['contest', 'election.voting'])->find($activeRuntime->context['admission_id'] ?? 0)
             : null;
+        $round = $activeRuntime->content_type === 'election_round'
+            ? ElectionRound::query()->with('contest.election.voting')->find($activeRuntime->context['round_id'] ?? 0)
+            : null;
 
         if ($admission !== null) {
             $this->voting = $admission->election->voting;
+        } elseif ($round !== null) {
+            $this->voting = $round->contest->election->voting;
         } elseif ($activeRuntime->content_type === 'standard_question' && $activeRuntime->voting_id !== null) {
             $this->voting = Voting::query()->findOrFail($activeRuntime->voting_id);
         }
@@ -54,6 +61,8 @@ class VotingPresentation extends Component
             'maxResultValue' => $this->maxResultValue($question),
             'admission' => $admission,
             'admissionResults' => $admission ? $admissions->summarizedResults($admission) : [],
+            'round' => $round,
+            'roundResults' => $round ? $rounds->results($round) : null,
         ])->layout('layouts.presentation')->title('Prezentácia hlasovania');
     }
 

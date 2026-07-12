@@ -1,5 +1,7 @@
 <div wire:poll.500ms class="relative h-screen overflow-hidden bg-white text-slate-950">
-    @if ($admission)
+    @if ($round)
+        <div class="flex h-full flex-col px-10 py-5"><header class="flex items-start justify-between"><p class="text-3xl font-semibold text-emerald-700">{{ $round->contest->name }} · kolo {{ $round->round_number }}</p><p class="text-2xl font-semibold">{{ $round->status === 'live' ? 'Prebieha hlasovanie' : 'Výsledok kola' }}</p></header><main class="flex-1 pt-12"><div class="grid grid-cols-[5rem_1fr_12rem_10rem] gap-4 border-b pb-3 text-xl font-semibold text-slate-500"><span>Por.</span><span>Kandidát</span><span>Hlasy</span><span>Stav</span></div>@foreach($roundResults['candidates'] as $index => $candidate)<div class="grid grid-cols-[5rem_1fr_12rem_10rem] gap-4 border-b py-5 text-3xl {{ $candidate['elected'] ? 'bg-emerald-100' : '' }}"><span>{{ $index + 1 }}</span><span>{{ $candidate['first_name'] }} {{ $candidate['last_name'] }}</span><strong>{{ $candidate['weighted_total'] }}</strong><span>{{ $candidate['elected'] ? 'Zvolený' : '' }}</span></div>@endforeach</main><footer class="border-t pt-4 text-2xl">Prijaté vážené hlasy: {{ $roundResults['total_weight'] }} · Väčšina: {{ $roundResults['majority_threshold'] }}</footer></div>
+    @elseif ($admission)
         @php
             $remaining = $admission->status === 'live' && $admission->opened_at
                 ? max(0, $admission->response_time_seconds - (now()->getTimestamp() - $admission->opened_at->getTimestamp()))

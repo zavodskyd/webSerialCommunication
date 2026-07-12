@@ -61,3 +61,21 @@ test('majority is calculated from all received weighted votes in the round', fun
 
     expect($manager->results($round)['majority_threshold'])->toBe(81.0);
 });
+
+test('a chairperson device keeps its first support and ignores a later candidate', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->where('key', 'chairperson')->firstOrFail();
+    $contest->candidates()->createMany([['first_name' => 'Anna', 'last_name' => 'A'], ['first_name' => 'Bea', 'last_name' => 'B']]);
+    $device = Device::query()->create(['device_number' => '020', 'code_a' => '', 'code_b' => '', 'code_c' => '', 'code_d' => '', 'code_e' => '', 'code_f' => '', 'code_ruka' => '']);
+    VotingAttendee::query()->create(['voting_id' => $voting->id, 'device_id' => $device->id, 'weight' => 1, 'is_present' => true, 'can_vote' => true]);
+    $manager = app(ElectionRoundManager::class);
+    $round = $manager->open($manager->create($contest));
+
+    $manager->recordVote($round, $round->candidates()->firstOrFail(), $device);
+    $manager->recordVote($round, $round->candidates()->skip(1)->firstOrFail(), $device);
+
+    expect($round->votes()->count())->toBe(1);
+    expect($round->votes()->first()->election_round_candidate_id)->toBe($round->candidates()->first()->id);
+});

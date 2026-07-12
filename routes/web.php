@@ -6,6 +6,7 @@ use App\Http\Controllers\VoteEventsExportController;
 use App\Http\Controllers\VotingExportController;
 use App\Http\Controllers\VotingLogoController;
 use App\Livewire\Election\ElectionCandidateAdmissionConsole;
+use App\Livewire\Election\ElectionConsole;
 use App\Livewire\Election\ElectionEditor;
 use App\Livewire\Election\ElectionIndex;
 use App\Livewire\Voting\VotingConsole;
@@ -52,3 +53,4 @@ Route::get('/votings/{voting}/questions/{question}/events.csv', VoteEventsExport
 Route::get('/elections', ElectionIndex::class)->name('elections.index');
 Route::get('/elections/{voting}', ElectionEditor::class)->name('elections.edit');
 Route::get('/elections/{voting}/candidate-admissions', ElectionCandidateAdmissionConsole::class)->name('elections.candidate-admissions');
+Route::get('/elections/{voting}/console', ElectionConsole::class)->name('elections.console');

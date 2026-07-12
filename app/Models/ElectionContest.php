@@ -44,4 +44,9 @@ class ElectionContest extends Model
             ->orderBy('last_name')
             ->orderBy('first_name');
     }
+
+    public function rounds(): HasMany
+    {
+        return $this->hasMany(ElectionRound::class)->orderBy('round_number');
+    }
 }

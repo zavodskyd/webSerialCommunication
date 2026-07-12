@@ -21,7 +21,7 @@ test('the last valid admission vote replaces the prior device vote and accepted 
     ]);
 
     $manager = app(ElectionCandidateAdmissionManager::class);
-    $manager->open($admission);
+    $manager->start($admission);
     $manager->recordVote($admission, $firstDevice, 'A');
     $manager->recordVote($admission, $firstDevice, 'B');
     $manager->recordVote($admission, $secondDevice, 'A');
@@ -29,6 +29,8 @@ test('the last valid admission vote replaces the prior device vote and accepted 
     expect($admission->votes()->count())->toBe(2);
     expect($admission->votes()->where('device_id', $firstDevice->id)->value('option_key'))->toBe('B');
 
+    $manager->stop($admission);
+    $manager->showResults($admission);
     expect($manager->resolve($admission)->status)->toBe('accepted');
     expect($contest->candidates()->where('first_name', 'Jana')->where('last_name', 'Nováková')->exists())->toBeTrue();
 });

@@ -32,8 +32,9 @@ test('operator can resolve the active admission and return the presentation runt
         'election_contest_id' => $contest->id,
         'first_name' => 'Jana',
         'last_name' => 'Nováková',
-        'status' => 'open',
+        'status' => 'closed',
         'opened_at' => now(),
+        'results_visible' => true,
     ]);
     app(PresentationRuntimeManager::class)->activate($voting, 'candidate_admission', ['admission_id' => $admission->id]);
 

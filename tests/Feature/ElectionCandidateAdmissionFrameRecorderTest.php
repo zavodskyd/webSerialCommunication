@@ -63,7 +63,7 @@ function activeAdmissionFixture(): array
         'device_group_id' => $group->id,
         'first_name' => 'Jana',
         'last_name' => 'Nováková',
-        'status' => 'open',
+        'status' => 'live',
         'opened_at' => now(),
     ]);
     $device = Device::query()->create([

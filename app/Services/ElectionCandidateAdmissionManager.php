@@ -38,12 +38,65 @@ class ElectionCandidateAdmissionManager
         })->values()->all();
     }
 
-    public function open(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
+    public function start(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
     {
-        if ($admission->contest->key === 'chairperson') {
-            throw new \InvalidArgumentException('Chairperson admissions are not allowed.');
+        return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
+            $admission = ElectionCandidateAdmission::query()->lockForUpdate()->findOrFail($admission->id);
+            if (! in_array($admission->status, ['draft', 'open', 'closed'], true)) {
+                throw new \InvalidArgumentException('Návrh nie je možné spustiť.');
+            }
+            $admission->update(['status' => 'live', 'opened_at' => now(), 'closed_at' => null, 'results_visible' => false]);
+
+            return $admission->refresh();
+        });
+    }
+
+    public function stop(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
+    {
+        return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
+            $admission = ElectionCandidateAdmission::query()->lockForUpdate()->findOrFail($admission->id);
+            if ($admission->status !== 'live') {
+                throw new \InvalidArgumentException('Návrh práve neprebieha.');
+            }
+            $admission->update(['status' => 'closed', 'closed_at' => now()]);
+
+            return $admission->refresh();
+        });
+    }
+
+    public function finish(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
+    {
+        return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
+            $admission = ElectionCandidateAdmission::query()->lockForUpdate()->findOrFail($admission->id);
+            if ($admission->status !== 'live') {
+                return $admission;
+            }
+            $admission->update(['status' => 'closed', 'closed_at' => now(), 'results_visible' => true]);
+
+            return $admission->refresh();
+        });
+    }
+
+    public function restart(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
+    {
+        return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
+            $admission = ElectionCandidateAdmission::query()->lockForUpdate()->findOrFail($admission->id);
+            if ($admission->status === 'live') {
+                throw new \InvalidArgumentException('Prebiehajúci návrh najprv zastavte.');
+            }
+            $admission->votes()->delete();
+            $admission->update(['status' => 'live', 'opened_at' => now(), 'closed_at' => null, 'resolved_at' => null, 'results_visible' => false]);
+
+            return $admission->refresh();
+        });
+    }
+
+    public function showResults(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
+    {
+        if ($admission->status === 'live') {
+            throw new \InvalidArgumentException('Návrh najprv zastavte.');
         }
-        $admission->update(['status' => 'open', 'opened_at' => now(), 'resolved_at' => null]);
+        $admission->update(['results_visible' => true]);
 
         return $admission->refresh();
     }
@@ -52,7 +105,12 @@ class ElectionCandidateAdmissionManager
     {
         return DB::transaction(function () use ($admission, $device, $optionKey): ElectionCandidateAdmissionVote {
             $admission = ElectionCandidateAdmission::query()->with(['contest', 'deviceGroup.ranges', 'election.voting'])->lockForUpdate()->findOrFail($admission->id);
-            if ($admission->status !== 'open' || ! in_array($optionKey, ['A', 'B', 'C'], true)) {
+            if ($admission->status === 'live'
+                && $admission->opened_at !== null
+                && now()->greaterThanOrEqualTo($admission->opened_at->copy()->addSeconds($admission->response_time_seconds))) {
+                $admission->update(['status' => 'closed', 'closed_at' => now(), 'results_visible' => true]);
+            }
+            if ($admission->status !== 'live' || ! in_array($optionKey, ['A', 'B', 'C'], true)) {
                 throw new \InvalidArgumentException('Admission is not accepting this vote.');
             }
             if ($admission->deviceGroup && ! $this->deviceIsInGroup($device, $admission->deviceGroup->ranges->all())) {
@@ -71,6 +129,9 @@ class ElectionCandidateAdmissionManager
     {
         return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
             $admission = ElectionCandidateAdmission::query()->with('contest')->lockForUpdate()->findOrFail($admission->id);
+            if ($admission->status !== 'closed' || ! $admission->results_visible) {
+                throw new \InvalidArgumentException('Najprv zastavte hlasovanie a zobrazte výsledok.');
+            }
             $votes = $admission->votes()->get();
             $total = $votes->sum('weight_snapshot');
             $yes = $votes->where('option_key', 'A')->sum('weight_snapshot');

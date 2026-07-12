@@ -2,8 +2,11 @@
 
 namespace App\Livewire\Voting;
 
+use App\Models\ElectionCandidateAdmission;
 use App\Models\Voting;
 use App\Models\VotingQuestion;
+use App\Services\ElectionCandidateAdmissionManager;
+use App\Support\PresentationRuntimeManager;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
 
@@ -27,9 +30,20 @@ class VotingPresentation extends Component
         }
     }
 
-    public function render(): View
+    public function render(PresentationRuntimeManager $runtime, ElectionCandidateAdmissionManager $admissions): View
     {
         $this->voting->refresh();
+
+        $activeRuntime = $runtime->current();
+        $admission = $activeRuntime->content_type === 'candidate_admission'
+            ? ElectionCandidateAdmission::query()->with(['contest', 'election.voting'])->find($activeRuntime->context['admission_id'] ?? 0)
+            : null;
+
+        if ($admission !== null) {
+            $this->voting = $admission->election->voting;
+        } elseif ($activeRuntime->content_type === 'standard_question' && $activeRuntime->voting_id !== null) {
+            $this->voting = Voting::query()->findOrFail($activeRuntime->voting_id);
+        }
 
         $question = $this->currentQuestion();
 
@@ -38,6 +52,8 @@ class VotingPresentation extends Component
             'participantCount' => $question?->votes()->distinct('device_id')->count('device_id') ?? 0,
             'results' => $question?->summarizedResults() ?? [],
             'maxResultValue' => $this->maxResultValue($question),
+            'admission' => $admission,
+            'admissionResults' => $admission ? $admissions->summarizedResults($admission) : [],
         ])->layout('layouts.presentation')->title('Prezentácia hlasovania');
     }
 

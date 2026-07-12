@@ -7,6 +7,7 @@ use App\Models\VoteEvent;
 use App\Models\Voting;
 use App\Models\VotingQuestion;
 use App\Services\Voting\VoteRecorder;
+use App\Support\PresentationRuntimeManager;
 use App\Support\SerialAgentClient;
 use App\Support\SerialAgentMode;
 use Illuminate\Contracts\View\View;
@@ -70,6 +71,7 @@ class VotingConsole extends Component
         $currentQuestion ??= $this->firstDraftQuestion();
 
         $this->currentQuestionId = $currentQuestion->id;
+        $this->activatePresentationQuestion();
         $this->resetQuestionState();
         $this->persistRuntimeState();
         $this->dispatchConsoleState();
@@ -377,6 +379,7 @@ class VotingConsole extends Component
             ->firstOrFail();
 
         $this->currentQuestionId = $question->id;
+        $this->activatePresentationQuestion();
         $this->resetQuestionState();
         $this->persistRuntimeState();
         $this->dispatchConsoleState();
@@ -506,6 +509,13 @@ class VotingConsole extends Component
         return $this->questions()
             ->whereKey($this->currentQuestionId)
             ->firstOrFail();
+    }
+
+    private function activatePresentationQuestion(): void
+    {
+        app(PresentationRuntimeManager::class)->activate($this->voting, 'standard_question', [
+            'question_id' => $this->currentQuestionId,
+        ]);
     }
 
     private function questions()

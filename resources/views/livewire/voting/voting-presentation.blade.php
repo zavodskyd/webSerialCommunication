@@ -1,5 +1,31 @@
 <div wire:poll.500ms class="relative h-screen overflow-hidden bg-white text-slate-950">
-    @if ($question)
+    @if ($admission)
+        @php
+            $remaining = $admission->status === 'live' && $admission->opened_at
+                ? max(0, $admission->response_time_seconds - (now()->getTimestamp() - $admission->opened_at->getTimestamp()))
+                : $admission->response_time_seconds;
+        @endphp
+        <div class="flex h-full flex-col px-10 py-5">
+            <header class="flex items-start gap-10">
+                <div class="flex h-36 w-96 items-center justify-center overflow-hidden">
+                    @if ($voting->logo_path)<img src="{{ route('votings.logo', $voting) }}" alt="Logo hlasovania" class="h-full w-full object-contain">@endif
+                </div>
+                <div class="flex min-h-36 flex-1 items-center justify-end text-right"><h1 class="max-w-4xl text-5xl font-medium text-slate-950">{{ $voting->title ?: 'Hlasovanie delegátov' }}</h1></div>
+            </header>
+            <main class="flex flex-1 items-center justify-center">
+                <div class="w-full max-w-5xl text-left">
+                <p class="text-center text-3xl font-semibold text-emerald-700">Doplnenie kandidáta · {{ $admission->contest->name }}</p>
+                <h2 class="mt-8 text-center text-6xl font-semibold">{{ $admission->first_name }} {{ $admission->last_name }}</h2>
+                @if ($admission->results_visible)
+                    <div class="mt-14 grid w-full max-w-5xl grid-cols-3 gap-8">@foreach($admissionResults as $result)<div class="rounded-2xl bg-slate-100 p-8"><p class="text-2xl">{{ $result['label'] }}</p><p class="mt-3 text-6xl font-semibold">{{ $result['weighted_total'] }}</p></div>@endforeach</div>
+                @else
+                    <div class="mt-14 space-y-5 text-left text-4xl"><p>A. Za</p><p>B. Proti</p><p>C. Zdržal sa</p></div>
+                @endif
+                </div>
+            </main>
+            <footer class="grid grid-cols-3 items-end border-t border-slate-200 pt-2"><p class="text-xl font-semibold">{{ $admission->status === 'live' ? 'Prebieha hlasovanie' : ($admission->results_visible ? 'Výsledok' : 'Zastavené') }}</p><p class="text-center text-4xl font-semibold">{{ sprintf('%02d:%02d', intdiv($remaining, 60), $remaining % 60) }}</p><p class="text-right text-3xl font-semibold">{{ $admission->votes()->count() }}</p></footer>
+        </div>
+    @elseif ($question)
         @php
             $timerIsActive = $voting->runtime_collector_enabled && $voting->runtime_remaining_seconds <= 30;
             $timerIsWarning = $timerIsActive && $voting->runtime_remaining_seconds <= 5;

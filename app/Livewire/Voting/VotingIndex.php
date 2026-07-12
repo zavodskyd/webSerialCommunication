@@ -31,6 +31,7 @@ class VotingIndex extends Component
     public function copyVoting(int $votingId): void
     {
         $sourceVoting = Voting::query()
+            ->where('voting_type', 'standard')
             ->with(['questions.options', 'attendees'])
             ->findOrFail($votingId);
 
@@ -103,6 +104,7 @@ class VotingIndex extends Component
     public function render(): View
     {
         $votingsQuery = Voting::query()
+            ->where('voting_type', 'standard')
             ->withCount('questions')
             ->withCount([
                 'questions as closed_questions_count' => fn ($query) => $query->where('status', 'closed'),

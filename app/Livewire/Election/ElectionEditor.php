@@ -1,0 +1,330 @@
+<?php
+
+namespace App\Livewire\Election;
+
+use App\Models\DeviceGroup;
+use App\Models\Election;
+use App\Models\ElectionCandidate;
+use App\Models\ElectionContest;
+use App\Models\Voting;
+use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Attributes\Validate;
+use Livewire\Component;
+use Livewire\WithFileUploads;
+
+class ElectionEditor extends Component
+{
+    use WithFileUploads;
+
+    public Voting $voting;
+
+    public Election $election;
+
+    #[Validate('required|string|min:3|max:255')]
+    public string $name = '';
+
+    #[Validate('nullable|string|max:255')]
+    public ?string $title = null;
+
+    #[Validate('nullable|string|max:2000')]
+    public ?string $headerText = null;
+
+    public ?string $logoPath = null;
+
+    #[Validate('nullable|image|max:2048')]
+    public $logoUpload = null;
+
+    #[Validate('required|integer|min:5|max:600')]
+    public int $defaultResponseTimeSeconds = 30;
+
+    public bool $autoShowResults = true;
+
+    /**
+     * @var array<int, array{id: int, name: string, seat_count: int, candidates: list<array{id: int, first_name: string, last_name: string}>}>
+     */
+    public array $contestRows = [];
+
+    /**
+     * @var array<int, array{first_name: string, last_name: string}>
+     */
+    public array $candidateDrafts = [];
+
+    /**
+     * @var list<array{id: ?int, name: string, is_active: bool, ranges: list<array{start_number: string, end_number: string}>}>
+     */
+    public array $groupRows = [];
+
+    public function mount(Voting $voting): void
+    {
+        abort_unless($voting->voting_type === 'election', 404);
+
+        $this->voting = $voting;
+        $this->election = $voting->election()->firstOrFail();
+        $this->fillFromVoting();
+        $this->loadContests();
+        $this->loadDeviceGroups();
+    }
+
+    public function saveElection(): void
+    {
+        $validated = $this->validate([
+            'name' => ['required', 'string', 'min:3', 'max:255'],
+            'title' => ['nullable', 'string', 'max:255'],
+            'headerText' => ['nullable', 'string', 'max:2000'],
+            'logoUpload' => ['nullable', 'image', 'max:2048'],
+            'defaultResponseTimeSeconds' => ['required', 'integer', 'min:5', 'max:600'],
+            'autoShowResults' => ['required', 'boolean'],
+        ]);
+
+        $logoPath = $this->logoPath;
+
+        if ($validated['logoUpload'] ?? false) {
+            if ($logoPath) {
+                Storage::disk('public')->delete($logoPath);
+            }
+
+            $logoPath = $validated['logoUpload']->store('voting-logos', 'public');
+            $this->logoPath = $logoPath;
+            $this->logoUpload = null;
+        }
+
+        $this->voting->update([
+            'name' => $validated['name'],
+            'title' => $validated['title'],
+            'header_text' => $validated['headerText'],
+            'logo_path' => $logoPath,
+            'default_response_time_seconds' => $validated['defaultResponseTimeSeconds'],
+            'auto_show_results' => $validated['autoShowResults'],
+        ]);
+
+        session()->flash('status', 'Voľby boli uložené.');
+    }
+
+    public function addCandidate(int $contestId): void
+    {
+        $contest = $this->findContest($contestId);
+        $draft = $this->candidateDrafts[$contestId] ?? [];
+
+        $validated = validator(
+            ['candidate' => $draft],
+            [
+                'candidate.first_name' => ['required', 'string', 'max:255'],
+                'candidate.last_name' => ['required', 'string', 'max:255'],
+            ],
+            [],
+            [
+                'candidate.first_name' => 'meno kandidáta',
+                'candidate.last_name' => 'priezvisko kandidáta',
+            ],
+        )->validate();
+
+        $contest->candidates()->create([
+            ...$validated['candidate'],
+            'status' => 'approved',
+        ]);
+
+        $this->candidateDrafts[$contestId] = ['first_name' => '', 'last_name' => ''];
+        $this->loadContests();
+        session()->flash('status', 'Kandidát bol pridaný do súťaže.');
+    }
+
+    public function removeCandidate(int $candidateId): void
+    {
+        $this->election->contests()
+            ->whereHas('candidates', fn ($query) => $query->whereKey($candidateId))
+            ->firstOrFail()
+            ->candidates()
+            ->whereKey($candidateId)
+            ->delete();
+
+        $this->loadContests();
+        session()->flash('status', 'Kandidát bol odstránený.');
+    }
+
+    public function addDeviceGroup(): void
+    {
+        $this->groupRows[] = [
+            'id' => null,
+            'name' => '',
+            'is_active' => true,
+            'ranges' => [['start_number' => '', 'end_number' => '']],
+        ];
+    }
+
+    public function addDeviceGroupRange(int $groupIndex): void
+    {
+        $this->groupRows[$groupIndex]['ranges'][] = ['start_number' => '', 'end_number' => ''];
+    }
+
+    public function removeDeviceGroup(int $groupIndex): void
+    {
+        unset($this->groupRows[$groupIndex]);
+        $this->groupRows = array_values($this->groupRows);
+    }
+
+    public function removeDeviceGroupRange(int $groupIndex, int $rangeIndex): void
+    {
+        unset($this->groupRows[$groupIndex]['ranges'][$rangeIndex]);
+        $this->groupRows[$groupIndex]['ranges'] = array_values($this->groupRows[$groupIndex]['ranges']);
+    }
+
+    public function saveDeviceGroups(): void
+    {
+        $validated = validator(
+            ['groupRows' => $this->groupRows],
+            [
+                'groupRows' => ['array'],
+                'groupRows.*.id' => ['nullable', 'integer'],
+                'groupRows.*.name' => ['required', 'string', 'max:255'],
+                'groupRows.*.is_active' => ['required', 'boolean'],
+                'groupRows.*.ranges' => ['required', 'array', 'min:1'],
+                'groupRows.*.ranges.*.start_number' => ['required', 'integer', 'min:1'],
+                'groupRows.*.ranges.*.end_number' => ['required', 'integer', 'min:1'],
+            ],
+            [],
+            [
+                'groupRows.*.name' => 'názov skupiny',
+                'groupRows.*.ranges.*.start_number' => 'začiatok rozsahu',
+                'groupRows.*.ranges.*.end_number' => 'koniec rozsahu',
+            ],
+        )->validate();
+
+        if (! $this->rangesAreValidAndDisjoint($validated['groupRows'])) {
+            return;
+        }
+
+        DB::transaction(function () use ($validated): void {
+            $savedGroupIds = [];
+
+            foreach ($validated['groupRows'] as $index => $groupRow) {
+                $group = $this->election->deviceGroups()->updateOrCreate(
+                    ['id' => $groupRow['id'] ?? null],
+                    [
+                        'name' => $groupRow['name'],
+                        'sort_order' => $index + 1,
+                        'is_active' => $groupRow['is_active'],
+                    ],
+                );
+
+                $group->ranges()->delete();
+                $group->ranges()->createMany($groupRow['ranges']);
+                $savedGroupIds[] = $group->id;
+            }
+
+            $this->election->deviceGroups()
+                ->when($savedGroupIds !== [], fn ($query) => $query->whereNotIn('id', $savedGroupIds))
+                ->when($savedGroupIds === [], fn ($query) => $query)
+                ->delete();
+        });
+
+        $this->loadDeviceGroups();
+        session()->flash('status', 'Skupiny zariadení boli uložené.');
+    }
+
+    public function render(): View
+    {
+        return view('livewire.election.election-editor')
+            ->layout('layouts.app')
+            ->title('Editácia volieb');
+    }
+
+    private function fillFromVoting(): void
+    {
+        $this->name = $this->voting->name;
+        $this->title = $this->voting->title;
+        $this->headerText = $this->voting->header_text;
+        $this->logoPath = $this->voting->logo_path;
+        $this->defaultResponseTimeSeconds = $this->voting->default_response_time_seconds ?? 30;
+        $this->autoShowResults = $this->voting->auto_show_results ?? true;
+    }
+
+    private function loadContests(): void
+    {
+        $this->contestRows = $this->election->contests()
+            ->with('candidates')
+            ->get()
+            ->map(function (ElectionContest $contest): array {
+                $this->candidateDrafts[$contest->id] ??= ['first_name' => '', 'last_name' => ''];
+
+                return [
+                    'id' => $contest->id,
+                    'name' => $contest->name,
+                    'seat_count' => $contest->seat_count,
+                    'candidates' => $contest->candidates
+                        ->map(fn (ElectionCandidate $candidate): array => [
+                            'id' => $candidate->id,
+                            'first_name' => $candidate->first_name,
+                            'last_name' => $candidate->last_name,
+                        ])
+                        ->all(),
+                ];
+            })
+            ->all();
+    }
+
+    private function loadDeviceGroups(): void
+    {
+        $this->groupRows = $this->election->deviceGroups()
+            ->with('ranges')
+            ->get()
+            ->map(fn (DeviceGroup $group): array => [
+                'id' => $group->id,
+                'name' => $group->name,
+                'is_active' => $group->is_active,
+                'ranges' => $group->ranges
+                    ->map(fn ($range): array => [
+                        'start_number' => (string) $range->start_number,
+                        'end_number' => (string) $range->end_number,
+                    ])
+                    ->all(),
+            ])
+            ->all();
+    }
+
+    private function findContest(int $contestId): ElectionContest
+    {
+        return $this->election->contests()->whereKey($contestId)->firstOrFail();
+    }
+
+    /**
+     * @param  list<array{id: ?int, name: string, is_active: bool, ranges: list<array{start_number: int, end_number: int}>}>  $groups
+     */
+    private function rangesAreValidAndDisjoint(array $groups): bool
+    {
+        $ranges = [];
+
+        foreach ($groups as $groupIndex => $group) {
+            foreach ($group['ranges'] as $rangeIndex => $range) {
+                if ($range['start_number'] > $range['end_number']) {
+                    $this->addError("groupRows.{$groupIndex}.ranges.{$rangeIndex}.end_number", 'Koniec rozsahu musí byť väčší alebo rovný začiatku.');
+
+                    return false;
+                }
+
+                $ranges[] = [
+                    'start_number' => $range['start_number'],
+                    'end_number' => $range['end_number'],
+                    'group_index' => $groupIndex,
+                    'range_index' => $rangeIndex,
+                ];
+            }
+        }
+
+        usort($ranges, fn (array $left, array $right): int => $left['start_number'] <=> $right['start_number']);
+
+        for ($index = 1; $index < count($ranges); $index++) {
+            if ($ranges[$index]['start_number'] <= $ranges[$index - 1]['end_number']) {
+                $this->addError(
+                    "groupRows.{$ranges[$index]['group_index']}.ranges.{$ranges[$index]['range_index']}.start_number",
+                    'Rozsahy zariadení sa nesmú prekrývať.',
+                );
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+}

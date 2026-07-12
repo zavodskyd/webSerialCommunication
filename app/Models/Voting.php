@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Voting extends Model
 {
@@ -13,6 +14,7 @@ class Voting extends Model
 
     protected $fillable = [
         'name',
+        'voting_type',
         'status',
         'question_label',
         'title',
@@ -56,6 +58,11 @@ class Voting extends Model
     public function attendees(): HasMany
     {
         return $this->hasMany(VotingAttendee::class);
+    }
+
+    public function election(): HasOne
+    {
+        return $this->hasOne(Election::class);
     }
 
     public function questions(): HasMany

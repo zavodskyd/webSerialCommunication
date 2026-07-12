@@ -5,6 +5,8 @@ use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\VoteEventsExportController;
 use App\Http\Controllers\VotingExportController;
 use App\Http\Controllers\VotingLogoController;
+use App\Livewire\Election\ElectionEditor;
+use App\Livewire\Election\ElectionIndex;
 use App\Livewire\Voting\VotingConsole;
 use App\Livewire\Voting\VotingEditor;
 use App\Livewire\Voting\VotingIndex;
@@ -46,3 +48,5 @@ Route::get('/votings/{voting}/exports/pressed-options/pdf', [VotingExportControl
     ->name('votings.exports.pressed-options.pdf');
 Route::get('/votings/{voting}/questions/{question}/events.csv', VoteEventsExportController::class)
     ->name('votings.questions.events-export');
+Route::get('/elections', ElectionIndex::class)->name('elections.index');
+Route::get('/elections/{voting}', ElectionEditor::class)->name('elections.edit');

@@ -6,6 +6,7 @@ namespace App\Services\SerialAgent;
 
 use App\Models\Voting;
 use App\Services\ElectionCandidateAdmissionFrameRecorder;
+use App\Services\ElectionRoundFrameRecorder;
 use App\Services\Voting\VoteRecorder;
 use App\Services\Voting\VoteRecordingResult;
 
@@ -14,6 +15,7 @@ class SerialAgentFrameHandler
     public function __construct(
         private readonly VoteRecorder $recorder,
         private readonly ElectionCandidateAdmissionFrameRecorder $admissionRecorder,
+        private readonly ElectionRoundFrameRecorder $roundRecorder,
     ) {}
 
     public function handle(string $hex): ?VoteRecordingResult
@@ -22,6 +24,11 @@ class SerialAgentFrameHandler
 
         if ($admissionResult !== null) {
             return $admissionResult;
+        }
+
+        $roundResult = $this->roundRecorder->recordIfActive($hex);
+        if ($roundResult !== null) {
+            return $roundResult;
         }
 
         $voting = Voting::query()

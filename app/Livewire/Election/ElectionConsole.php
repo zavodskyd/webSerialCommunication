@@ -8,6 +8,7 @@ use App\Models\ElectionRound;
 use App\Models\Voting;
 use App\Services\ElectionRoundManager;
 use App\Support\PresentationRuntimeManager;
+use App\Support\SerialAgentClient;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
 
@@ -21,18 +22,28 @@ class ElectionConsole extends Component
 
     public ?int $roundId = null;
 
+    public ?int $candidateId = null;
+
+    public bool $serialConnected = false;
+
+    public ?bool $serialAgentHealthy = null;
+
     public function mount(Voting $voting): void
     {
         abort_unless($voting->voting_type === 'election', 404);
         $this->voting = $voting;
         $this->election = $voting->election()->firstOrFail();
         $this->contestId = $this->election->contests()->value('id');
+        app(PresentationRuntimeManager::class)->activate($this->voting, 'election_contest', ['contest_id' => $this->contestId]);
     }
 
-    public function selectContest(int $contestId): void
+    public function selectContest(int $contestId, PresentationRuntimeManager $runtime): void
     {
-        $this->contestId = $contestId;
+        $contest = $this->election->contests()->findOrFail($contestId);
+        $this->contestId = $contest->id;
         $this->roundId = null;
+        $this->candidateId = null;
+        $runtime->activate($this->voting, 'election_contest', ['contest_id' => $contest->id]);
     }
 
     public function createRound(ElectionRoundManager $rounds, PresentationRuntimeManager $runtime): void
@@ -44,6 +55,11 @@ class ElectionConsole extends Component
 
     public function openRound(ElectionRoundManager $rounds, PresentationRuntimeManager $runtime): void
     {
+        if (! $this->serialConnected) {
+            session()->flash('status', 'Najprv pripojte Serial Agent.');
+
+            return;
+        }
         $round = $rounds->open($this->round());
         $runtime->activate($this->voting, 'election_round', ['round_id' => $round->id]);
     }
@@ -53,8 +69,18 @@ class ElectionConsole extends Component
         $rounds->close($this->round());
     }
 
+    public function selectCandidate(int $candidateId, PresentationRuntimeManager $runtime): void
+    {
+        $candidate = $this->round()->candidates()->findOrFail($candidateId);
+        $this->candidateId = $candidate->id;
+        $runtime->activate($this->voting, 'election_round', ['round_id' => $this->roundId, 'candidate_id' => $candidate->id]);
+    }
+
     public function render(ElectionRoundManager $rounds): View
     {
+        $health = app(SerialAgentClient::class)->health();
+        $this->serialAgentHealthy = (bool) ($health['ok'] ?? false);
+        $this->serialConnected = (bool) ($health['connected'] ?? false);
         $contest = $this->contest();
         $round = $this->roundId ? $contest->rounds()->with('candidates')->find($this->roundId) : $contest->rounds()->with('candidates')->latest('round_number')->first();
 

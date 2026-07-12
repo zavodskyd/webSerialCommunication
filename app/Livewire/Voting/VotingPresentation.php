@@ -3,6 +3,7 @@
 namespace App\Livewire\Voting;
 
 use App\Models\ElectionCandidateAdmission;
+use App\Models\ElectionContest;
 use App\Models\ElectionRound;
 use App\Models\Voting;
 use App\Models\VotingQuestion;
@@ -43,11 +44,16 @@ class VotingPresentation extends Component
         $round = $activeRuntime->content_type === 'election_round'
             ? ElectionRound::query()->with('contest.election.voting')->find($activeRuntime->context['round_id'] ?? 0)
             : null;
+        $contest = $activeRuntime->content_type === 'election_contest'
+            ? ElectionContest::query()->with(['election.voting', 'candidates'])->find($activeRuntime->context['contest_id'] ?? 0)
+            : null;
 
         if ($admission !== null) {
             $this->voting = $admission->election->voting;
         } elseif ($round !== null) {
             $this->voting = $round->contest->election->voting;
+        } elseif ($contest !== null) {
+            $this->voting = $contest->election->voting;
         } elseif ($activeRuntime->content_type === 'standard_question' && $activeRuntime->voting_id !== null) {
             $this->voting = Voting::query()->findOrFail($activeRuntime->voting_id);
         }
@@ -63,6 +69,7 @@ class VotingPresentation extends Component
             'admissionResults' => $admission ? $admissions->summarizedResults($admission) : [],
             'round' => $round,
             'roundResults' => $round ? $rounds->results($round) : null,
+            'contest' => $contest,
         ])->layout('layouts.presentation')->title('Prezentácia hlasovania');
     }
 

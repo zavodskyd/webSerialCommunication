@@ -1,6 +1,43 @@
 import './bootstrap';
 
+const flashMessageSelector = '[data-flash-message]';
+const flashMessageDelay = 5000;
+
+function scheduleFlashMessageDismissal(message) {
+    if (message.dataset.flashDismissalScheduled === 'true') {
+        return;
+    }
+
+    message.dataset.flashDismissalScheduled = 'true';
+
+    window.setTimeout(() => {
+        message.classList.add('opacity-0', 'pointer-events-none');
+
+        window.setTimeout(() => message.remove(), 300);
+    }, flashMessageDelay);
+}
+
+function scheduleFlashMessages(root) {
+    if (root instanceof Element && root.matches(flashMessageSelector)) {
+        scheduleFlashMessageDismissal(root);
+    }
+
+    if (! (root instanceof Element || root instanceof Document)) {
+        return;
+    }
+
+    root.querySelectorAll(flashMessageSelector).forEach(scheduleFlashMessageDismissal);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    scheduleFlashMessages(document);
+
+    new MutationObserver((records) => {
+        records.forEach((record) => {
+            record.addedNodes.forEach(scheduleFlashMessages);
+        });
+    }).observe(document.body, { childList: true, subtree: true });
+
     const exportButtons = document.querySelectorAll('[data-backup-export-url]');
 
     if (exportButtons.length === 0) {

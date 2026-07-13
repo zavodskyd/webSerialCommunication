@@ -41,10 +41,11 @@ class ElectionCandidateAdmissionManager
     public function start(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
     {
         return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
-            $admission = ElectionCandidateAdmission::query()->lockForUpdate()->findOrFail($admission->id);
+            $admission = ElectionCandidateAdmission::query()->with(['election', 'deviceGroup.ranges'])->lockForUpdate()->findOrFail($admission->id);
             if (! in_array($admission->status, ['draft', 'open', 'closed'], true)) {
                 throw new \InvalidArgumentException('Návrh nie je možné spustiť.');
             }
+            $this->snapshotEligibleDeviceWeights($admission);
             $admission->update(['status' => 'live', 'opened_at' => now(), 'closed_at' => null, 'results_visible' => false]);
 
             return $admission->refresh();
@@ -80,11 +81,12 @@ class ElectionCandidateAdmissionManager
     public function restart(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
     {
         return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
-            $admission = ElectionCandidateAdmission::query()->lockForUpdate()->findOrFail($admission->id);
+            $admission = ElectionCandidateAdmission::query()->with(['election', 'deviceGroup.ranges'])->lockForUpdate()->findOrFail($admission->id);
             if ($admission->status === 'live') {
                 throw new \InvalidArgumentException('Prebiehajúci návrh najprv zastavte.');
             }
             $admission->votes()->delete();
+            $this->snapshotEligibleDeviceWeights($admission);
             $admission->update(['status' => 'live', 'opened_at' => now(), 'closed_at' => null, 'resolved_at' => null, 'results_visible' => false]);
 
             return $admission->refresh();
@@ -104,7 +106,7 @@ class ElectionCandidateAdmissionManager
     public function recordVote(ElectionCandidateAdmission $admission, Device $device, string $optionKey): ElectionCandidateAdmissionVote
     {
         return DB::transaction(function () use ($admission, $device, $optionKey): ElectionCandidateAdmissionVote {
-            $admission = ElectionCandidateAdmission::query()->with(['contest', 'deviceGroup.ranges', 'election.voting'])->lockForUpdate()->findOrFail($admission->id);
+            $admission = ElectionCandidateAdmission::query()->with(['eligibleDeviceWeights', 'contest', 'deviceGroup.ranges', 'election.voting'])->lockForUpdate()->findOrFail($admission->id);
             if ($admission->status === 'live'
                 && $admission->opened_at !== null
                 && now()->greaterThanOrEqualTo($admission->opened_at->copy()->addSeconds($admission->response_time_seconds))) {
@@ -116,12 +118,12 @@ class ElectionCandidateAdmissionManager
             if ($admission->deviceGroup && ! $this->deviceIsInGroup($device, $admission->deviceGroup->ranges->all())) {
                 throw new \InvalidArgumentException('Device is outside the admission group.');
             }
-            $attendee = VotingAttendee::query()->where('voting_id', $admission->election->voting_id)->where('device_id', $device->id)->firstOrFail();
-            if (! $attendee->can_vote || ! $attendee->is_present || (float) $attendee->weight <= 0) {
+            $weightSnapshot = $admission->eligibleDeviceWeights->firstWhere('device_id', $device->id);
+            if ($weightSnapshot === null) {
                 throw new \InvalidArgumentException('Device has no voting weight.');
             }
 
-            return ElectionCandidateAdmissionVote::query()->updateOrCreate(['election_candidate_admission_id' => $admission->id, 'device_id' => $device->id], ['option_key' => $optionKey, 'weight_snapshot' => $attendee->weight, 'voted_at' => now()]);
+            return ElectionCandidateAdmissionVote::query()->updateOrCreate(['election_candidate_admission_id' => $admission->id, 'device_id' => $device->id], ['option_key' => $optionKey, 'weight_snapshot' => $weightSnapshot->weight_snapshot, 'voted_at' => now()]);
         });
     }
 
@@ -133,9 +135,9 @@ class ElectionCandidateAdmissionManager
                 throw new \InvalidArgumentException('Najprv zastavte hlasovanie a zobrazte výsledok.');
             }
             $votes = $admission->votes()->get();
-            $total = $votes->sum('weight_snapshot');
             $yes = $votes->where('option_key', 'A')->sum('weight_snapshot');
-            $accepted = $yes > ($total / 2);
+            $majorityThreshold = floor($admission->eligible_weight_total / 2) + 1;
+            $accepted = $yes >= $majorityThreshold;
             $admission->update(['status' => $accepted ? 'accepted' : 'rejected', 'resolved_at' => now()]);
             if ($accepted) {
                 $admission->contest->candidates()->firstOrCreate(['first_name' => $admission->first_name, 'last_name' => $admission->last_name], ['status' => 'approved']);
@@ -150,5 +152,43 @@ class ElectionCandidateAdmissionManager
         $number = (int) ltrim($device->device_number, '0');
 
         return collect($ranges)->contains(fn ($range) => $number >= $range->start_number && $number <= $range->end_number);
+    }
+
+    private function snapshotEligibleDeviceWeights(ElectionCandidateAdmission $admission): void
+    {
+        $activeDeviceLimit = $admission->election->active_device_limit;
+        if (! $activeDeviceLimit) {
+            throw new \InvalidArgumentException('Pred spustením nastavte horný limit aktívnych zariadení.');
+        }
+
+        $eligibleAttendees = VotingAttendee::query()
+            ->where('voting_id', $admission->election->voting_id)
+            ->where('is_present', true)
+            ->where('can_vote', true)
+            ->where('weight', '>=', 1)
+            ->whereHas('device', function ($query) use ($activeDeviceLimit, $admission): void {
+                $query->whereRaw('CAST(device_number AS INTEGER) between 1 and ?', [$activeDeviceLimit]);
+
+                if ($admission->deviceGroup) {
+                    $query->where(function ($query) use ($admission): void {
+                        foreach ($admission->deviceGroup->ranges as $range) {
+                            $query->orWhereRaw('CAST(device_number AS INTEGER) between ? and ?', [$range->start_number, $range->end_number]);
+                        }
+                    });
+                }
+            })
+            ->get(['device_id', 'weight']);
+
+        $admission->eligibleDeviceWeights()->delete();
+        $admission->eligibleDeviceWeights()->createMany($eligibleAttendees->map(
+            fn (VotingAttendee $attendee): array => [
+                'device_id' => $attendee->device_id,
+                'weight_snapshot' => $attendee->weight,
+            ],
+        )->all());
+        $admission->update([
+            'active_device_limit' => $activeDeviceLimit,
+            'eligible_weight_total' => (float) $eligibleAttendees->sum('weight'),
+        ]);
     }
 }

@@ -7,6 +7,7 @@ use App\Models\ElectionCandidateAdmission;
 use App\Models\VoteEvent;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
+use App\Services\ElectionCandidateAdmissionManager;
 use App\Services\SerialAgent\SerialAgentFrameHandler;
 use App\Support\PresentationRuntimeManager;
 
@@ -52,7 +53,7 @@ test('an active localized admission rejects a serial frame from outside its devi
 function activeAdmissionFixture(): array
 {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 9]);
     $election->createDefaultContests();
     $group = DeviceGroup::query()->create(['election_id' => $election->id, 'name' => 'Hliny', 'sort_order' => 1]);
     $group->ranges()->create(['start_number' => 1, 'end_number' => 9]);
@@ -63,8 +64,6 @@ function activeAdmissionFixture(): array
         'device_group_id' => $group->id,
         'first_name' => 'Jana',
         'last_name' => 'Nováková',
-        'status' => 'live',
-        'opened_at' => now(),
     ]);
     $device = Device::query()->create([
         'device_number' => '001',
@@ -77,6 +76,8 @@ function activeAdmissionFixture(): array
         'is_present' => true,
         'can_vote' => true,
     ]);
+
+    app(ElectionCandidateAdmissionManager::class)->start($admission);
 
     app(PresentationRuntimeManager::class)->activate($voting, 'candidate_admission', ['admission_id' => $admission->id]);
 

@@ -1,6 +1,6 @@
 <div class="min-h-screen bg-slate-100">
     @if (session('status'))
-        <div data-floating-status class="pointer-events-none fixed left-1/2 top-4 z-[100] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2">
+        <div data-flash-message data-floating-status class="pointer-events-none fixed left-1/2 top-4 z-[100] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 transition-opacity duration-300">
             <div class="pointer-events-auto flex items-start justify-between gap-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50/95 px-5 py-4 text-sm font-medium text-emerald-900 shadow-xl shadow-emerald-900/10 backdrop-blur">
                 <span role="status">{{ session('status') }}</span>
                 <button

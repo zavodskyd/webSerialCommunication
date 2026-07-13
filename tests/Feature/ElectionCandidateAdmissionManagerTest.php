@@ -35,10 +35,36 @@ test('the last valid admission vote replaces the prior device vote and accepted 
     expect($contest->candidates()->where('first_name', 'Jana')->where('last_name', 'Nováková')->exists())->toBeTrue();
 });
 
+test('candidate admission snapshots the eligible group weights and resolves against their majority', function () {
+    [$election, $contest, $group] = admissionFixture();
+    $election->update(['active_device_limit' => 2]);
+    $firstDevice = admissionDevice('001', 4);
+    $secondDevice = admissionDevice('002', 4);
+    $admission = ElectionCandidateAdmission::query()->create([
+        'election_id' => $election->id,
+        'election_contest_id' => $contest->id,
+        'device_group_id' => $group->id,
+        'first_name' => 'Jana',
+        'last_name' => 'Nováková',
+    ]);
+
+    $manager = app(ElectionCandidateAdmissionManager::class);
+    $started = $manager->start($admission);
+    $manager->recordVote($admission, $firstDevice, 'A');
+    VotingAttendee::query()->where('device_id', $secondDevice->id)->update(['weight' => 100]);
+    $manager->stop($admission);
+    $manager->showResults($admission);
+
+    expect($started->active_device_limit)->toBe(2);
+    expect($started->eligible_weight_total)->toBe(8.0);
+    expect($started->eligibleDeviceWeights()->count())->toBe(2);
+    expect($manager->resolve($admission)->status)->toBe('rejected');
+});
+
 function admissionFixture(): array
 {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 9]);
     $election->createDefaultContests();
     $contest = $election->contests()->where('key', 'board-hliny')->firstOrFail();
     $group = DeviceGroup::query()->create(['election_id' => $election->id, 'name' => 'Hliny', 'sort_order' => 1]);

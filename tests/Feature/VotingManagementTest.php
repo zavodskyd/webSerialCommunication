@@ -48,6 +48,18 @@ test('visitor can view voting pages', function () {
         ->assertSee(route('votings.presentation', $voting));
 });
 
+test('a voting editor flash message uses the global auto-dismiss marker', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
+    ]);
+
+    $this->withSession(['status' => 'Hlasovanie bolo uložené.'])
+        ->get(route('votings.edit', $voting))
+        ->assertSuccessful()
+        ->assertSee('data-flash-message', false)
+        ->assertSeeText('Hlasovanie bolo uložené.');
+});
+
 test('user can create a new voting from the index', function () {
     Livewire::test(VotingIndex::class)
         ->set('name', 'Zhromaždenie delegátov 2026')

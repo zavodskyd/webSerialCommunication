@@ -12,7 +12,7 @@
                     class="text-sm font-semibold {{ $serialConnected ? 'text-emerald-700' : 'text-rose-700' }}">{{ $serialConnected ? 'Serial Agent pripojený' : 'Serial Agent nepripojený' }}</span>
             </div>
             @if (session('status'))
-                <p class="mt-3 rounded-xl bg-rose-50 p-3 text-rose-800">{{ session('status') }}</p>
+                <p data-flash-message class="mt-3 rounded-xl bg-rose-50 p-3 text-rose-800 transition-opacity duration-300">{{ session('status') }}</p>
                 @endif@if (!$round)<button wire:click="createRound"
                         class="mt-5 rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white">Vytvoriť
                     kolo</button>@else<div class="mt-5 flex gap-3"><button wire:click="openRound"

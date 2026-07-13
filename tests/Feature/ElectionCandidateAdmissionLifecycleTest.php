@@ -8,7 +8,7 @@ use App\Support\PresentationRuntimeManager;
 
 test('a proposal is started, stopped, shown, and restarted as separate actions', function () {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 1]);
     $election->createDefaultContests();
     $admission = ElectionCandidateAdmission::query()->create([
         'election_id' => $election->id,

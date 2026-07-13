@@ -6,7 +6,7 @@
             <div class="space-y-6">
 
         @if (session('status'))
-            <p class="rounded-xl bg-emerald-50 px-4 py-3 font-medium text-emerald-800">{{ session('status') }}</p>
+            <p data-flash-message class="rounded-xl bg-emerald-50 px-4 py-3 font-medium text-emerald-800 transition-opacity duration-300">{{ session('status') }}</p>
         @endif
 
         @if ($activeAdmission)

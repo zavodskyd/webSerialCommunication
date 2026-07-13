@@ -25,7 +25,7 @@
                 </div>
                 <aside class="flex flex-col justify-between border-l pl-6 text-right">
                     <div class="text-2xl">Mandátov: <strong>{{ $contest->seat_count }}</strong></div>
-                    <div class="text-xl text-slate-500">Pripravené na hlasovanie</div>
+                    <div class="text-xl text-slate-500">Môžete označiť najviac {{ $contest->seat_count }} kandidátov.</div>
                 </aside>
             </main>
         </div>
@@ -45,11 +45,67 @@
                 </div>
             </header>
             <main class="mt-6 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_18rem] gap-8">
-                <div class="min-h-0 overflow-hidden">
+                @php
+                    $candidateCount = count($roundResults['candidates']);
+                @endphp
+                <div
+                    x-data="{
+                        candidateCount: {{ $candidateCount }},
+                        compact: {{ $candidateCount >= 8 ? 'true' : 'false' }},
+                        columns: 1,
+                        rows: 1,
+                        observer: null,
+                        configure() {
+                            if (!this.compact) {
+                                this.rows = this.candidateCount;
+                                this.columns = 1;
+
+                                return;
+                            }
+
+                            const availableHeight = this.$refs.candidateRows.clientHeight;
+                            const targetRowHeight = window.innerHeight < 800 ? 52 : 68;
+
+                            this.rows = Math.max(1, Math.min(this.candidateCount, Math.floor(availableHeight / targetRowHeight)));
+                            this.columns = Math.max(1, Math.ceil(this.candidateCount / this.rows));
+                        },
+                        init() {
+                            if (!this.compact) {
+                                return;
+                            }
+
+                            this.$nextTick(() => {
+                                this.configure();
+                                this.observer = new ResizeObserver(() => this.configure());
+                                this.observer.observe(this.$refs.candidateRows);
+                            });
+                        },
+                        destroy() {
+                            this.observer?.disconnect();
+                        },
+                    }"
+                    data-election-candidate-table
+                    @class([
+                        'flex min-h-0 flex-col overflow-hidden' => $candidateCount >= 8,
+                    ])
+                >
+                    @if ($candidateCount >= 8)
+                        <div class="mb-3 border-b pb-3 text-xl font-semibold text-slate-500">
+                            Kandidátka · poradie, meno, hlasy a stav
+                        </div>
+                    @else
+                        <div class="grid grid-cols-[5rem_1fr_12rem_10rem] gap-4 border-b pb-3 text-xl font-semibold text-slate-500">
+                            <span>Por.</span><span>Kandidát</span><span>Hlasy</span><span>Stav</span>
+                        </div>
+                    @endif
                     <div
-                        class="grid grid-cols-[5rem_1fr_12rem_10rem] gap-4 border-b pb-3 text-xl font-semibold text-slate-500">
-                        <span>Por.</span><span>Kandidát</span><span>Hlasy</span><span>Stav</span></div>
-                    <div class="grid grid-cols-1 gap-x-6 2xl:grid-cols-2">
+                        x-ref="candidateRows"
+                        :style="compact ? `grid-template-columns: repeat(${columns}, minmax(0, 1fr)); grid-template-rows: repeat(${rows}, minmax(0, 1fr));` : ''"
+                        @class([
+                            'grid grid-flow-col min-h-0 flex-1 gap-x-6 overflow-hidden' => $candidateCount >= 8,
+                            'grid grid-cols-1 gap-x-6' => $candidateCount < 8,
+                        ])
+                    >
                         @foreach ($roundResults['candidates'] as $index => $candidate)
                             @php
                                 $sourceCandidateId = $roundCandidateSourceIds[$candidate['id']] ?? null;
@@ -58,14 +114,20 @@
                                 $isPriorWinner = $round->status === 'closed' && in_array($sourceCandidateId, $priorElectedCandidateIds, true);
                             @endphp
                             <div @class([
-                                'grid grid-cols-[3rem_minmax(0,1fr)_7rem_7rem] gap-3 border-b px-3 py-3 text-2xl',
+                                'grid min-h-0 items-center gap-3 overflow-hidden border-b px-3 transition-colors',
                                 'bg-emerald-100' => $isActiveCandidate || $isCurrentWinner,
                                 'bg-amber-100' => $isPriorWinner && ! $isCurrentWinner,
-                            ])>
+                            ])
+                                :class="{
+                                    'grid-cols-[2rem_minmax(0,1fr)_4rem] py-1 text-base': compact && (columns >= 3 || rows >= 9),
+                                    'grid-cols-[2.5rem_minmax(0,1fr)_5rem] py-2 text-xl': compact && (columns === 2 || rows >= 6),
+                                    'grid-cols-[3rem_minmax(0,1fr)_7rem_7rem] py-3 text-2xl': !compact || (columns === 1 && rows < 6),
+                                }"
+                            >
                                 <span>{{ $index + 1 }}</span>
-                                <span>{{ $candidate['first_name'] }} {{ $candidate['last_name'] }}</span>
+                                <span class="truncate">{{ $candidate['first_name'] }} {{ $candidate['last_name'] }}</span>
                                 <strong>{{ $candidate['weighted_total'] }}</strong>
-                                <span>{{ $isPriorWinner ? 'Zvolený skôr' : ($isCurrentWinner ? 'Zvolený' : '') }}</span>
+                                <span x-show="!compact || (columns === 1 && rows < 6)">{{ $isPriorWinner ? 'Zvolený skôr' : ($isCurrentWinner ? 'Zvolený' : '') }}</span>
                             </div>
                         @endforeach
                     </div>
@@ -73,7 +135,7 @@
                 <aside class="flex flex-col justify-between border-l pl-6 text-right">
                     <div class="space-y-3 text-2xl">
                         <p>{{ $round->status === 'live' ? 'Prebieha hlasovanie' : 'Výsledok kola' }}</p>
-                        <p>Mandátov: <strong>{{ $round->contest->seat_count }}</strong></p>
+                        <p class="text-xl text-slate-950">Možno označiť najviac {{ $round->contest->seat_count }} kandidátov.</p>
                         <p>Väčšina: <strong>{{ $roundResults['majority_threshold'] }}</strong></p>
                     </div>
                     <div class="text-xl text-slate-500">Prijaté vážené hlasy: {{ $roundResults['total_weight'] }}</div>

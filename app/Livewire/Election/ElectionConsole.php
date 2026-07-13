@@ -41,7 +41,7 @@ class ElectionConsole extends Component
     {
         $contest = $this->election->contests()->findOrFail($contestId);
         $this->contestId = $contest->id;
-        $round = $contest->rounds()->latest('round_number')->first();
+        $round = $contest->rounds()->reorder()->latest('round_number')->first();
         $this->roundId = $round?->id;
         $this->candidateId = null;
         $runtime->activate($this->voting, $round ? 'election_round' : 'election_contest', $round ? ['round_id' => $round->id] : ['contest_id' => $contest->id]);
@@ -67,7 +67,13 @@ class ElectionConsole extends Component
 
     public function closeRound(ElectionRoundManager $rounds): void
     {
-        $rounds->close($this->round());
+        $closedRound = $rounds->close($this->round());
+        $nextRound = $this->contest()->rounds()->reorder()->latest('round_number')->first();
+
+        if ($nextRound !== null && $nextRound->id !== $closedRound->id) {
+            $this->roundId = $nextRound->id;
+            $this->candidateId = null;
+        }
     }
 
     public function selectCandidate(int $candidateId, PresentationRuntimeManager $runtime): void
@@ -83,7 +89,7 @@ class ElectionConsole extends Component
         $this->serialAgentHealthy = (bool) ($health['ok'] ?? false);
         $this->serialConnected = (bool) ($health['connected'] ?? false);
         $contest = $this->contest();
-        $round = $this->roundId ? $contest->rounds()->with('candidates')->find($this->roundId) : $contest->rounds()->with('candidates')->latest('round_number')->first();
+        $round = $this->roundId ? $contest->rounds()->with('candidates')->find($this->roundId) : $contest->rounds()->with('candidates')->reorder()->latest('round_number')->first();
 
         return view('livewire.election.election-console', ['contests' => $this->election->contests()->get(), 'contest' => $contest, 'round' => $round, 'results' => $round ? $rounds->results($round) : null])->layout('layouts.app')->title('Volebná konzola');
     }

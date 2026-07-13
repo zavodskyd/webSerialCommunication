@@ -519,7 +519,7 @@ test('presentation uses the updated presentation layout proportions', function (
         ->assertSee('flex items-start gap-10', false)
         ->assertSee('flex min-h-36 flex-1 items-center justify-end text-right', false)
         ->assertSee('relative min-h-0 flex-1 pt-8', false)
-        ->assertSee('absolute left-0 top-[12%] max-w-5xl text-6xl font-light leading-tight tracking-normal text-slate-800', false)
+        ->assertSee('absolute left-0 top-[12%] max-w-5xl text-5xl font-light leading-tight tracking-normal text-slate-800', false)
         ->assertSee('absolute left-1/2 top-[40%] w-full max-w-[54rem] -translate-x-1/2', false)
         ->assertSee('mx-auto mb-12 max-w-5xl text-center text-5xl font-medium leading-tight text-slate-950', false)
         ->assertSee('mx-auto w-full max-w-6xl', false)

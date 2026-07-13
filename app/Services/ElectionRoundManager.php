@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Device;
+use App\Models\ElectionCandidate;
 use App\Models\ElectionContest;
 use App\Models\ElectionRound;
 use App\Models\ElectionRoundCandidate;
@@ -50,11 +51,27 @@ class ElectionRoundManager
     public function close(ElectionRound $round): ElectionRound
     {
         return DB::transaction(function () use ($round): ElectionRound {
-            $round = ElectionRound::query()->lockForUpdate()->findOrFail($round->id);
+            $round = ElectionRound::query()
+                ->with(['contest', 'candidates.votes'])
+                ->lockForUpdate()
+                ->findOrFail($round->id);
             if ($round->status !== 'live') {
                 throw new \InvalidArgumentException('Kolo neprebieha.');
             }
             $round->update(['status' => 'closed', 'closed_at' => now()]);
+            $results = $this->results($round);
+            $electedCandidateIds = collect($results['candidates'])
+                ->filter(fn (array $candidate): bool => $candidate['elected'])
+                ->pluck('id');
+
+            $round->candidates()
+                ->whereIn('id', $electedCandidateIds)
+                ->update(['status' => 'elected']);
+
+            $nextCandidates = $this->nextRoundCandidates($round, $results, $electedCandidateIds->all());
+            if ($nextCandidates !== []) {
+                $this->createFromRoundCandidates($round, $nextCandidates);
+            }
 
             return $round->refresh();
         });
@@ -126,5 +143,112 @@ class ElectionRoundManager
             'majority_threshold' => $threshold,
             'candidates' => $eligible->map(fn (array $candidate): array => [...$candidate, 'elected' => in_array($candidate['id'], $electedIds, true)])->all(),
         ];
+    }
+
+    /**
+     * @param  array{candidates: array<int, array{id: int, weighted_total: float, elected: bool}>}  $results
+     * @param  array<int, int>  $electedCandidateIds
+     * @return array<int, ElectionRoundCandidate>
+     */
+    private function nextRoundCandidates(ElectionRound $round, array $results, array $electedCandidateIds): array
+    {
+        $remainingSeats = $round->contest->seat_count - ElectionRoundCandidate::query()
+            ->whereHas('round', fn ($query) => $query->where('election_contest_id', $round->election_contest_id))
+            ->where('status', 'elected')
+            ->count();
+
+        if ($remainingSeats <= 0) {
+            return [];
+        }
+
+        $candidateSnapshots = $round->candidates->keyBy('id');
+        $unsuccessfulCandidates = collect($results['candidates'])
+            ->reject(fn (array $candidate): bool => in_array($candidate['id'], $electedCandidateIds, true));
+
+        if ($round->contest->key === 'chairperson') {
+            if ($round->round_number > 1) {
+                return [];
+            }
+
+            $runoffCandidateIds = $unsuccessfulCandidates
+                ->filter(fn (array $candidate): bool => $candidate['weighted_total'] > 0)
+                ->take(2)
+                ->pluck('id')
+                ->all();
+
+            if (count($runoffCandidateIds) < 2) {
+                return [];
+            }
+
+            $round->candidates()
+                ->whereNotIn('id', $runoffCandidateIds)
+                ->update(['status' => 'eliminated']);
+
+            return collect($runoffCandidateIds)
+                ->map(fn (int $candidateId): ElectionRoundCandidate => $candidateSnapshots->get($candidateId))
+                ->all();
+        }
+
+        if ($unsuccessfulCandidates->count() <= $remainingSeats) {
+            return [];
+        }
+
+        $candidateToEliminate = $unsuccessfulCandidates
+            ->sortBy([
+                ['weighted_total', 'asc'],
+                ['last_name', 'asc'],
+                ['first_name', 'asc'],
+            ])
+            ->first();
+
+        $round->candidates()
+            ->whereKey($candidateToEliminate['id'])
+            ->update(['status' => 'eliminated']);
+
+        return $unsuccessfulCandidates
+            ->reject(fn (array $candidate): bool => $candidate['id'] === $candidateToEliminate['id'])
+            ->map(fn (array $candidate): ElectionRoundCandidate => $candidateSnapshots->get($candidate['id']))
+            ->all();
+    }
+
+    /**
+     * @param  array<int, ElectionRoundCandidate>  $candidates
+     */
+    private function createFromRoundCandidates(ElectionRound $sourceRound, array $candidates): ElectionRound
+    {
+        $contest = $sourceRound->contest;
+        $round = $contest->rounds()->create([
+            'round_number' => ((int) $contest->rounds()->max('round_number')) + 1,
+            'response_time_seconds' => $sourceRound->response_time_seconds,
+        ]);
+
+        $sourceCandidateIds = $sourceRound->candidates
+            ->map(fn (ElectionRoundCandidate $candidate): int => (int) $candidate->election_candidate_id)
+            ->filter()
+            ->all();
+        $newCandidates = $contest->candidates
+            ->reject(fn (ElectionCandidate $candidate): bool => in_array($candidate->id, $sourceCandidateIds, true));
+
+        $roundCandidates = collect($candidates)
+            ->map(fn (ElectionRoundCandidate $candidate): array => [
+                'election_candidate_id' => $candidate->election_candidate_id,
+                'first_name' => $candidate->first_name,
+                'last_name' => $candidate->last_name,
+            ])
+            ->merge($newCandidates->map(fn (ElectionCandidate $candidate): array => [
+                'election_candidate_id' => $candidate->id,
+                'first_name' => $candidate->first_name,
+                'last_name' => $candidate->last_name,
+            ]))
+            ->sortBy([
+                ['last_name', 'asc'],
+                ['first_name', 'asc'],
+            ])
+            ->values()
+            ->map(fn (array $candidate, int $index): array => [...$candidate, 'sort_order' => $index + 1]);
+
+        $round->candidates()->createMany($roundCandidates->all());
+
+        return $round;
     }
 }

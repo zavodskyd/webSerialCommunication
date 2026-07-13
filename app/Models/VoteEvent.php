@@ -12,6 +12,9 @@ class VoteEvent extends Model
     protected $fillable = [
         'voting_id',
         'voting_question_id',
+        'election_candidate_admission_id',
+        'election_round_id',
+        'election_round_candidate_id',
         'device_id',
         'raw_hex',
         'source',

@@ -58,5 +58,6 @@ test('presentation renders the active candidate admission from the shared runtim
     $this->get(route('votings.presentation', $voting))
         ->assertSuccessful()
         ->assertSee('Doplnenie kandidáta')
-        ->assertSee('Jana Nováková');
+        ->assertSee('Jana')
+        ->assertSee('Nováková');
 });

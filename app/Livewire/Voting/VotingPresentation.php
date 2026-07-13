@@ -42,7 +42,7 @@ class VotingPresentation extends Component
             ? ElectionCandidateAdmission::query()->with(['contest', 'election.voting'])->find($activeRuntime->context['admission_id'] ?? 0)
             : null;
         $round = $activeRuntime->content_type === 'election_round'
-            ? ElectionRound::query()->with('contest.election.voting')->find($activeRuntime->context['round_id'] ?? 0)
+            ? ElectionRound::query()->with(['contest.election.voting', 'contest.rounds.candidates', 'candidates'])->find($activeRuntime->context['round_id'] ?? 0)
             : null;
         $contest = $activeRuntime->content_type === 'election_contest'
             ? ElectionContest::query()->with(['election.voting', 'candidates'])->find($activeRuntime->context['contest_id'] ?? 0)
@@ -69,6 +69,17 @@ class VotingPresentation extends Component
             'admissionResults' => $admission ? $admissions->summarizedResults($admission) : [],
             'round' => $round,
             'roundResults' => $round ? $rounds->results($round) : null,
+            'activeRoundCandidateId' => $activeRuntime->content_type === 'election_round' ? (int) ($activeRuntime->context['candidate_id'] ?? 0) : null,
+            'priorElectedCandidateIds' => $round?->status === 'closed'
+                ? $round->contest->rounds
+                    ->where('round_number', '<', $round->round_number)
+                    ->flatMap(fn (ElectionRound $previousRound) => $previousRound->candidates)
+                    ->where('status', 'elected')
+                    ->pluck('election_candidate_id')
+                    ->filter()
+                    ->all()
+                : [],
+            'roundCandidateSourceIds' => $round?->candidates->pluck('election_candidate_id', 'id')->all() ?? [],
             'contest' => $contest,
         ])->layout('layouts.presentation')->title('Prezentácia hlasovania');
     }

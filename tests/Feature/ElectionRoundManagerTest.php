@@ -79,3 +79,99 @@ test('a chairperson device keeps its first support and ignores a later candidate
     expect($round->votes()->count())->toBe(1);
     expect($round->votes()->first()->election_round_candidate_id)->toBe($round->candidates()->first()->id);
 });
+
+test('an unsuccessful chairperson first round creates a runoff from the two highest non-zero results', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->where('key', 'chairperson')->firstOrFail();
+    $contest->candidates()->createMany([
+        ['first_name' => 'Anna', 'last_name' => 'Adamová'],
+        ['first_name' => 'Bea', 'last_name' => 'Bérová'],
+        ['first_name' => 'Cyril', 'last_name' => 'Cibulík'],
+    ]);
+
+    $manager = app(ElectionRoundManager::class);
+    $round = $manager->open($manager->create($contest));
+    $round->votes()->createMany([
+        ['election_round_candidate_id' => $round->candidates()->first()->id, 'device_id' => electionRoundDevice('101')->id, 'weight_snapshot' => 40, 'voted_at' => now()],
+        ['election_round_candidate_id' => $round->candidates()->skip(1)->first()->id, 'device_id' => electionRoundDevice('102')->id, 'weight_snapshot' => 35, 'voted_at' => now()],
+        ['election_round_candidate_id' => $round->candidates()->skip(2)->first()->id, 'device_id' => electionRoundDevice('103')->id, 'weight_snapshot' => 25, 'voted_at' => now()],
+    ]);
+
+    $manager->close($round);
+    $runoff = $contest->rounds()->reorder()->latest('round_number')->firstOrFail();
+
+    expect($runoff->round_number)->toBe(2);
+    expect($runoff->candidates()->pluck('last_name')->all())->toBe(['Adamová', 'Bérová']);
+    expect($round->candidates()->where('last_name', 'Cibulík')->value('status'))->toBe('eliminated');
+});
+
+test('a multi-seat contest carries forward unsuccessful candidates after eliminating the lowest result', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->where('key', 'board-hliny')->firstOrFail();
+    $contest->candidates()->createMany([
+        ['first_name' => 'Anna', 'last_name' => 'Adamová'],
+        ['first_name' => 'Bea', 'last_name' => 'Bérová'],
+        ['first_name' => 'Cyril', 'last_name' => 'Cibulík'],
+        ['first_name' => 'Dana', 'last_name' => 'Dudová'],
+    ]);
+
+    $manager = app(ElectionRoundManager::class);
+    $round = $manager->open($manager->create($contest));
+    $round->votes()->createMany([
+        ['election_round_candidate_id' => $round->candidates()->first()->id, 'device_id' => electionRoundDevice('201')->id, 'weight_snapshot' => 10, 'voted_at' => now()],
+        ['election_round_candidate_id' => $round->candidates()->skip(1)->first()->id, 'device_id' => electionRoundDevice('202')->id, 'weight_snapshot' => 8, 'voted_at' => now()],
+        ['election_round_candidate_id' => $round->candidates()->skip(3)->first()->id, 'device_id' => electionRoundDevice('203')->id, 'weight_snapshot' => 1, 'voted_at' => now()],
+    ]);
+
+    $manager->close($round);
+    $nextRound = $contest->rounds()->reorder()->latest('round_number')->firstOrFail();
+
+    expect($round->candidates()->where('last_name', 'Adamová')->value('status'))->toBe('elected');
+    expect($round->candidates()->where('last_name', 'Cibulík')->value('status'))->toBe('eliminated');
+    expect($nextRound->round_number)->toBe(2);
+    expect($nextRound->candidates()->pluck('last_name')->all())->toBe(['Bérová', 'Dudová']);
+});
+
+test('a successor round includes candidates added after the preceding round', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->where('key', 'chairperson')->firstOrFail();
+    $contest->candidates()->createMany([
+        ['first_name' => 'Anna', 'last_name' => 'Adamová'],
+        ['first_name' => 'Bea', 'last_name' => 'Bérová'],
+        ['first_name' => 'Cyril', 'last_name' => 'Cibulík'],
+    ]);
+
+    $manager = app(ElectionRoundManager::class);
+    $round = $manager->open($manager->create($contest));
+    $round->votes()->createMany([
+        ['election_round_candidate_id' => $round->candidates()->first()->id, 'device_id' => electionRoundDevice('301')->id, 'weight_snapshot' => 40, 'voted_at' => now()],
+        ['election_round_candidate_id' => $round->candidates()->skip(1)->first()->id, 'device_id' => electionRoundDevice('302')->id, 'weight_snapshot' => 35, 'voted_at' => now()],
+        ['election_round_candidate_id' => $round->candidates()->skip(2)->first()->id, 'device_id' => electionRoundDevice('303')->id, 'weight_snapshot' => 25, 'voted_at' => now()],
+    ]);
+    $contest->candidates()->create(['first_name' => 'Dana', 'last_name' => 'Dudová']);
+
+    $manager->close($round);
+    $runoff = $contest->rounds()->reorder()->latest('round_number')->firstOrFail();
+
+    expect($runoff->candidates()->pluck('last_name')->all())->toBe(['Adamová', 'Bérová', 'Dudová']);
+});
+
+function electionRoundDevice(string $number): Device
+{
+    return Device::query()->create([
+        'device_number' => $number,
+        'code_a' => '',
+        'code_b' => '',
+        'code_c' => '',
+        'code_d' => '',
+        'code_e' => '',
+        'code_f' => '',
+        'code_ruka' => '',
+    ]);
+}

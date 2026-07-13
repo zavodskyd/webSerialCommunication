@@ -109,6 +109,7 @@ class ElectionCandidateAdmissionFrameRecorder
 
         VoteEvent::query()->create([
             'voting_id' => $admission->election->voting_id,
+            'election_candidate_admission_id' => $admission->id,
             'device_id' => $deviceId,
             'raw_hex' => $hex,
             'source' => 'rust-agent',

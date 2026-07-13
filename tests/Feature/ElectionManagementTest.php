@@ -3,8 +3,11 @@
 use App\Livewire\Election\ElectionEditor;
 use App\Livewire\Election\ElectionIndex;
 use App\Livewire\Voting\VotingIndex;
+use App\Models\Device;
 use App\Models\Election;
 use App\Models\Voting;
+use App\Models\VotingAttendee;
+use Illuminate\Http\UploadedFile;
 use Livewire\Livewire;
 
 test('user can create an election with the fixed contests', function () {
@@ -92,6 +95,44 @@ test('device group ranges may not overlap', function () {
         ->assertHasErrors('groupRows.1.range.start_number');
 });
 
+test('user can export and import election device weights', function () {
+    $voting = createElectionVoting();
+    $firstDevice = createElectionDevice('001');
+    $secondDevice = createElectionDevice('002');
+
+    VotingAttendee::query()->create([
+        'voting_id' => $voting->id,
+        'device_id' => $firstDevice->id,
+        'weight' => 5,
+        'is_present' => true,
+        'can_vote' => true,
+    ]);
+
+    Livewire::test(ElectionEditor::class, ['voting' => $voting])
+        ->call('exportDeviceWeights')
+        ->assertFileDownloaded('volby-organov-vahy-zariadeni.csv');
+
+    $import = UploadedFile::fake()->createWithContent(
+        'weights.csv',
+        "device_number,weight\n001,3\n002,8\n999,10\n",
+    );
+
+    Livewire::test(ElectionEditor::class, ['voting' => $voting])
+        ->set('deviceWeightsImport', $import)
+        ->call('importDeviceWeights')
+        ->assertHasNoErrors();
+
+    expect((float) VotingAttendee::query()
+        ->where('voting_id', $voting->id)
+        ->where('device_id', $firstDevice->id)
+        ->value('weight'))->toBe(3.0);
+
+    expect((float) VotingAttendee::query()
+        ->where('voting_id', $voting->id)
+        ->where('device_id', $secondDevice->id)
+        ->value('weight'))->toBe(8.0);
+});
+
 function createElectionVoting(): Voting
 {
     $voting = Voting::query()->create([
@@ -103,4 +144,18 @@ function createElectionVoting(): Voting
     $election->createDefaultContests();
 
     return $voting;
+}
+
+function createElectionDevice(string $deviceNumber): Device
+{
+    return Device::query()->create([
+        'device_number' => $deviceNumber,
+        'code_a' => '',
+        'code_b' => '',
+        'code_c' => '',
+        'code_d' => '',
+        'code_e' => '',
+        'code_f' => '',
+        'code_ruka' => '',
+    ]);
 }

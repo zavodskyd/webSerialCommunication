@@ -8,11 +8,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ElectionRound extends Model
 {
-    protected $fillable = ['election_contest_id', 'round_number', 'status', 'response_time_seconds', 'opened_at', 'closed_at'];
+    protected $fillable = ['election_contest_id', 'round_number', 'status', 'response_time_seconds', 'active_device_limit', 'eligible_weight_total', 'opened_at', 'closed_at'];
 
     protected function casts(): array
     {
-        return ['opened_at' => 'datetime', 'closed_at' => 'datetime'];
+        return ['opened_at' => 'datetime', 'closed_at' => 'datetime', 'eligible_weight_total' => 'decimal:2'];
     }
 
     public function contest(): BelongsTo
@@ -28,5 +28,10 @@ class ElectionRound extends Model
     public function votes(): HasMany
     {
         return $this->hasMany(ElectionRoundVote::class);
+    }
+
+    public function eligibleDeviceWeights(): HasMany
+    {
+        return $this->hasMany(ElectionRoundDeviceWeight::class);
     }
 }

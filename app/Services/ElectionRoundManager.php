@@ -42,7 +42,31 @@ class ElectionRoundManager
             if ($round->status !== 'draft') {
                 throw new \InvalidArgumentException('Kolo nie je pripravené na spustenie.');
             }
-            $round->update(['status' => 'live', 'opened_at' => now(), 'closed_at' => null]);
+            $activeDeviceLimit = $round->contest->election->active_device_limit;
+            if (! $activeDeviceLimit) {
+                throw new \InvalidArgumentException('Pred spustením nastavte horný limit aktívnych zariadení.');
+            }
+            $eligibleAttendees = VotingAttendee::query()
+                ->where('voting_id', $round->contest->election->voting_id)
+                ->where('is_present', true)
+                ->where('can_vote', true)
+                ->where('weight', '>=', 1)
+                ->whereHas('device', fn ($query) => $query->whereRaw('CAST(device_number AS INTEGER) between 1 and ?', [$activeDeviceLimit]))
+                ->get(['device_id', 'weight']);
+            $round->eligibleDeviceWeights()->createMany($eligibleAttendees->map(
+                fn (VotingAttendee $attendee): array => [
+                    'device_id' => $attendee->device_id,
+                    'weight_snapshot' => $attendee->weight,
+                ],
+            )->all());
+            $eligibleWeightTotal = (float) $eligibleAttendees->sum('weight');
+            $round->update([
+                'status' => 'live',
+                'opened_at' => now(),
+                'closed_at' => null,
+                'active_device_limit' => $activeDeviceLimit,
+                'eligible_weight_total' => $eligibleWeightTotal,
+            ]);
 
             return $round->refresh();
         });
@@ -84,13 +108,9 @@ class ElectionRoundManager
             if ($round->status !== 'live' || $candidate->election_round_id !== $round->id) {
                 throw new \InvalidArgumentException('Kolo neprijíma tento hlas.');
             }
-            $attendee = VotingAttendee::query()
-                ->where('voting_id', $round->contest->election->voting_id)
+            $deviceWeight = $round->eligibleDeviceWeights()
                 ->where('device_id', $device->id)
                 ->firstOrFail();
-            if (! $attendee->can_vote || ! $attendee->is_present || (float) $attendee->weight <= 0) {
-                throw new \InvalidArgumentException('Zariadenie nemá platnú váhu hlasu.');
-            }
 
             $existingVotes = ElectionRoundVote::query()
                 ->where('election_round_id', $round->id)
@@ -106,7 +126,7 @@ class ElectionRoundManager
 
             return ElectionRoundVote::query()->updateOrCreate(
                 ['election_round_candidate_id' => $candidate->id, 'device_id' => $device->id],
-                ['election_round_id' => $round->id, 'weight_snapshot' => $attendee->weight, 'voted_at' => now()],
+                ['election_round_id' => $round->id, 'weight_snapshot' => $deviceWeight->weight_snapshot, 'voted_at' => now()],
             );
         });
     }
@@ -117,7 +137,7 @@ class ElectionRoundManager
     public function results(ElectionRound $round): array
     {
         $round->loadMissing('candidates.votes');
-        $totalWeight = (float) $round->votes()->sum('weight_snapshot');
+        $totalWeight = (float) ($round->eligible_weight_total ?? 0);
         $threshold = floor($totalWeight / 2) + 1;
         $eligible = $round->candidates
             ->map(fn ($candidate): array => [

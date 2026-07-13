@@ -76,6 +76,18 @@ class ElectionConsole extends Component
         }
     }
 
+    public function liveTick(ElectionRoundManager $rounds, PresentationRuntimeManager $runtime): void
+    {
+        $round = $this->roundId ? $this->round() : null;
+
+        if ($round === null || $round->status !== 'live' || $round->opened_at === null || now()->lessThan($round->opened_at->copy()->addSeconds($round->response_time_seconds))) {
+            return;
+        }
+
+        $this->closeRound($rounds);
+        $runtime->activate($this->voting, 'election_round', ['round_id' => $this->roundId]);
+    }
+
     public function selectCandidate(int $candidateId, PresentationRuntimeManager $runtime): void
     {
         $candidate = $this->round()->candidates()->findOrFail($candidateId);

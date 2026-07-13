@@ -11,6 +11,7 @@ class Election extends Model
     protected $fillable = [
         'voting_id',
         'status',
+        'active_device_limit',
         'candidate_admissions_locked',
         'started_at',
         'finished_at',

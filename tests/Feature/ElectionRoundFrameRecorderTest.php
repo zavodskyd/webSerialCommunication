@@ -44,12 +44,10 @@ test('a rejected round serial frame is audited without creating a vote', functio
 function activeRoundFixture(): array
 {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 1]);
     $election->createDefaultContests();
     $contest = $election->contests()->where('key', 'chairperson')->firstOrFail();
     $contest->candidates()->create(['first_name' => 'Jana', 'last_name' => 'Nováková']);
-    $round = app(ElectionRoundManager::class)->open(app(ElectionRoundManager::class)->create($contest));
-    $candidate = $round->candidates()->firstOrFail();
     $device = Device::query()->create([
         'device_number' => '001',
         'code_a' => '', 'code_b' => '', 'code_c' => '', 'code_d' => '', 'code_e' => '', 'code_f' => '', 'code_ruka' => '',
@@ -61,6 +59,8 @@ function activeRoundFixture(): array
         'is_present' => true,
         'can_vote' => true,
     ]);
+    $round = app(ElectionRoundManager::class)->open(app(ElectionRoundManager::class)->create($contest));
+    $candidate = $round->candidates()->firstOrFail();
 
     app(PresentationRuntimeManager::class)->activate($voting, 'election_round', [
         'round_id' => $round->id,

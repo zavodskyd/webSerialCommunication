@@ -2,17 +2,22 @@
 
 namespace App\Livewire\Election;
 
+use App\Models\Device;
 use App\Models\DeviceGroup;
 use App\Models\Election;
 use App\Models\ElectionCandidate;
 use App\Models\ElectionContest;
 use App\Models\Voting;
+use App\Models\VotingAttendee;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ElectionEditor extends Component
 {
@@ -41,6 +46,14 @@ class ElectionEditor extends Component
 
     public bool $autoShowResults = true;
 
+    public ?int $activeDeviceLimit = null;
+
+    /** @var array<int, array{id: int, device_number: string, weight: string}> */
+    public array $deviceWeightRows = [];
+
+    #[Validate('nullable|file|max:1024')]
+    public ?TemporaryUploadedFile $deviceWeightsImport = null;
+
     /**
      * @var array<int, array{id: int, name: string, seat_count: int, candidates: list<array{id: int, first_name: string, last_name: string}>}>
      */
@@ -68,6 +81,7 @@ class ElectionEditor extends Component
         $this->fillFromVoting();
         $this->loadContests();
         $this->loadDeviceGroups();
+        $this->loadDeviceWeights();
     }
 
     public function saveElection(): void
@@ -247,6 +261,117 @@ class ElectionEditor extends Component
         session()->flash('status', 'Skupiny zariadení boli uložené.');
     }
 
+    public function saveVotingWeights(): void
+    {
+        $validated = $this->validate([
+            'activeDeviceLimit' => ['required', 'integer', 'min:1', 'max:9999'],
+            'deviceWeightRows.*.id' => ['required', 'integer', 'exists:devices,id'],
+            'deviceWeightRows.*.weight' => ['required', 'numeric', 'min:0', 'max:999999'],
+        ]);
+
+        DB::transaction(function () use ($validated): void {
+            $this->election->update(['active_device_limit' => $validated['activeDeviceLimit']]);
+
+            foreach ($validated['deviceWeightRows'] as $row) {
+                VotingAttendee::query()->updateOrCreate(
+                    ['voting_id' => $this->voting->id, 'device_id' => $row['id']],
+                    ['weight' => $row['weight'], 'is_present' => true, 'can_vote' => true, 'registered_at' => now()],
+                );
+            }
+        });
+
+        $this->election->refresh();
+        $this->loadDeviceWeights();
+        session()->flash('status', 'Limit a váhy zariadení boli uložené.');
+    }
+
+    public function fillActiveDeviceWeights(): void
+    {
+        $validated = $this->validate(['activeDeviceLimit' => ['required', 'integer', 'min:1', 'max:9999']]);
+        $limit = $validated['activeDeviceLimit'];
+
+        foreach ($this->deviceWeightRows as $index => $row) {
+            $number = (int) ltrim($row['device_number'], '0');
+            if ($number >= 1 && $number <= $limit) {
+                $this->deviceWeightRows[$index]['weight'] = '1';
+            }
+        }
+
+        $this->election->update(['active_device_limit' => $limit]);
+        session()->flash('status', 'Váha 1 bola vyplnená pre zariadenia 1 až '.$limit.'.');
+    }
+
+    public function importDeviceWeights(): void
+    {
+        $validated = $this->validate([
+            'deviceWeightsImport' => ['required', 'file', 'max:1024'],
+        ]);
+
+        $handle = fopen($validated['deviceWeightsImport']->getRealPath(), 'r');
+
+        if ($handle === false) {
+            $this->addError('deviceWeightsImport', 'Súbor sa nepodarilo otvoriť.');
+
+            return;
+        }
+
+        $imported = 0;
+
+        while (($row = fgetcsv($handle)) !== false) {
+            $deviceNumber = trim((string) ($row[0] ?? ''));
+            $weight = trim((string) ($row[1] ?? ''));
+
+            if ($deviceNumber === 'device_number' && $weight === 'weight') {
+                continue;
+            }
+
+            if ($deviceNumber === '' || $weight === '' || ! is_numeric($weight)) {
+                continue;
+            }
+
+            $device = Device::query()
+                ->where('device_number', $deviceNumber)
+                ->first();
+
+            if (! $device) {
+                continue;
+            }
+
+            $this->updateDeviceWeight($device->id, $weight);
+            $imported++;
+        }
+
+        fclose($handle);
+
+        $this->deviceWeightsImport = null;
+        $this->loadDeviceWeights();
+
+        session()->flash('status', 'Importované počty hlasov pre '.$imported.' zariadení.');
+    }
+
+    public function exportDeviceWeights(): StreamedResponse
+    {
+        $this->loadDeviceWeights();
+
+        return response()->streamDownload(function (): void {
+            $output = fopen('php://output', 'w');
+
+            if ($output === false) {
+                return;
+            }
+
+            fputcsv($output, ['device_number', 'weight']);
+
+            foreach ($this->deviceWeightRows as $row) {
+                fputcsv($output, [$row['device_number'], $row['weight']]);
+            }
+
+            fclose($output);
+        }, Str::slug($this->voting->name).'-vahy-zariadeni.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
     public function render(): View
     {
         return view('livewire.election.election-editor')
@@ -303,6 +428,33 @@ class ElectionEditor extends Component
                 ],
             ])
             ->all();
+    }
+
+    private function loadDeviceWeights(): void
+    {
+        $this->activeDeviceLimit = $this->election->active_device_limit;
+        $weights = $this->voting->attendees()->pluck('weight', 'device_id');
+        $this->deviceWeightRows = Device::query()->ordered()->get()->map(fn (Device $device): array => [
+            'id' => $device->id,
+            'device_number' => $device->device_number,
+            'weight' => (string) ($weights[$device->id] ?? '0.00'),
+        ])->all();
+    }
+
+    private function updateDeviceWeight(int $deviceId, string|int|float $weight): void
+    {
+        VotingAttendee::query()->updateOrCreate(
+            [
+                'voting_id' => $this->voting->id,
+                'device_id' => $deviceId,
+            ],
+            [
+                'weight' => $weight,
+                'is_present' => true,
+                'can_vote' => true,
+                'registered_at' => now(),
+            ],
+        );
     }
 
     private function findContest(int $contestId): ElectionContest

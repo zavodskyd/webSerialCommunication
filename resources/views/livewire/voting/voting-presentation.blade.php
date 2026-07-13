@@ -46,7 +46,7 @@
             </header>
             <main class="mt-6 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_18rem] gap-8">
                 @php
-                    $candidateCount = count($roundResults['candidates']);
+                    $candidateCount = count($displayRoundCandidates);
                     $timerIsActive = $voting->runtime_collector_enabled && $voting->runtime_remaining_seconds <= 30;
                     $timerIsWarning = $timerIsActive && $voting->runtime_remaining_seconds <= 5;
                 @endphp
@@ -102,12 +102,11 @@
                             'grid grid-cols-1 gap-x-6' => $candidateCount < 8,
                         ])
                     >
-                        @foreach ($roundResults['candidates'] as $index => $candidate)
+                        @foreach ($displayRoundCandidates as $index => $candidate)
                             @php
-                                $sourceCandidateId = $roundCandidateSourceIds[$candidate['id']] ?? null;
                                 $isActiveCandidate = ! $roundResultsVisible && $activeRoundCandidateId === $candidate['id'];
                                 $isCurrentWinner = $roundResultsVisible && $candidate['elected'];
-                                $isPriorWinner = $roundResultsVisible && in_array($sourceCandidateId, $priorElectedCandidateIds, true);
+                                $isPriorWinner = $roundResultsVisible && $candidate['prior_elected'];
                             @endphp
                             <div @class([
                                 'grid min-h-0 items-center gap-3 overflow-hidden border-b px-3 transition-colors',
@@ -140,7 +139,7 @@
                         </div>
                         <p class="border-t border-slate-200 pt-6 text-xl text-slate-950">
                             Možno označiť najviac
-                            <strong class="text-5xl font-bold text-slate-950">{{ $round->contest->seat_count }}</strong>
+                            <strong class="text-5xl font-bold text-slate-950">{{ $roundResults['remaining_seats'] }}</strong>
                             kandidátov.
                         </p>
                     </div>

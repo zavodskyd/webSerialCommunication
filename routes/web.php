@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DatabaseBackupController;
 use App\Http\Controllers\DeviceController;
+use App\Http\Controllers\ElectionExportController;
 use App\Http\Controllers\VoteEventsExportController;
 use App\Http\Controllers\VotingExportController;
 use App\Http\Controllers\VotingLogoController;
@@ -54,3 +55,8 @@ Route::get('/elections', ElectionIndex::class)->name('elections.index');
 Route::get('/elections/{voting}', ElectionEditor::class)->name('elections.edit');
 Route::get('/elections/{voting}/candidate-admissions', ElectionCandidateAdmissionConsole::class)->name('elections.candidate-admissions');
 Route::get('/elections/{voting}/console', ElectionConsole::class)->name('elections.console');
+Route::get('/elections/{voting}/exports/results', [ElectionExportController::class, 'results'])->name('elections.exports.results');
+Route::get('/elections/{voting}/exports/results/pdf', [ElectionExportController::class, 'resultsPdf'])
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, VerifyCsrfToken::class])
+    ->name('elections.exports.results.pdf');
+Route::get('/elections/{voting}/exports/audit.csv', [ElectionExportController::class, 'audit'])->name('elections.exports.audit');

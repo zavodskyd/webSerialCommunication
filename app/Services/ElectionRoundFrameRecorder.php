@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ElectionVoteRejected;
 use App\Models\Device;
 use App\Models\ElectionRound;
 use App\Models\ElectionRoundCandidate;
@@ -32,6 +33,8 @@ class ElectionRoundFrameRecorder
         }
         try {
             $this->rounds->recordVote($round, $candidate, $device);
+        } catch (ElectionVoteRejected $exception) {
+            return $this->logResult($round, $candidate, $hex, new VoteRecordingResult(false, $exception->getMessage(), $device->device_number, 'A', [], $exception->reason));
         } catch (\InvalidArgumentException $exception) {
             return $this->logResult($round, $candidate, $hex, new VoteRecordingResult(false, $exception->getMessage(), $device->device_number, 'A', [], 'record_failed'));
         }

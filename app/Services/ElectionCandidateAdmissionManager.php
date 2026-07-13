@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ElectionVoteRejected;
 use App\Models\Device;
 use App\Models\ElectionCandidateAdmission;
 use App\Models\ElectionCandidateAdmissionVote;
@@ -113,14 +114,23 @@ class ElectionCandidateAdmissionManager
                 $admission->update(['status' => 'closed', 'closed_at' => now(), 'results_visible' => true]);
             }
             if ($admission->status !== 'live' || ! in_array($optionKey, ['A', 'B', 'C'], true)) {
-                throw new \InvalidArgumentException('Admission is not accepting this vote.');
+                throw new ElectionVoteRejected('admission_not_accepting', 'Návrh kandidáta neprijíma tento hlas.');
             }
             if ($admission->deviceGroup && ! $this->deviceIsInGroup($device, $admission->deviceGroup->ranges->all())) {
-                throw new \InvalidArgumentException('Device is outside the admission group.');
+                throw new ElectionVoteRejected('outside_device_group', 'Zariadenie je mimo skupiny návrhu kandidáta.');
             }
             $weightSnapshot = $admission->eligibleDeviceWeights->firstWhere('device_id', $device->id);
             if ($weightSnapshot === null) {
-                throw new \InvalidArgumentException('Device has no voting weight.');
+                $attendee = VotingAttendee::query()
+                    ->where('voting_id', $admission->election->voting_id)
+                    ->where('device_id', $device->id)
+                    ->first();
+
+                if ($attendee !== null && (float) $attendee->weight <= 0) {
+                    throw new ElectionVoteRejected('zero_weight', 'Zariadenie má nulovú váhu.');
+                }
+
+                throw new ElectionVoteRejected('ineligible_device', 'Zariadenie nie je oprávnené hlasovať o tomto návrhu.');
             }
 
             return ElectionCandidateAdmissionVote::query()->updateOrCreate(['election_candidate_admission_id' => $admission->id, 'device_id' => $device->id], ['option_key' => $optionKey, 'weight_snapshot' => $weightSnapshot->weight_snapshot, 'voted_at' => now()]);

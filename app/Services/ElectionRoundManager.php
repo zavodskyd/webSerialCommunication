@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ElectionVoteRejected;
 use App\Models\Device;
 use App\Models\ElectionCandidate;
 use App\Models\ElectionContest;
@@ -105,23 +106,44 @@ class ElectionRoundManager
     {
         return DB::transaction(function () use ($round, $candidate, $device): ElectionRoundVote {
             $round = ElectionRound::query()->with('contest.election')->lockForUpdate()->findOrFail($round->id);
-            if ($round->status !== 'live' || $candidate->election_round_id !== $round->id) {
-                throw new \InvalidArgumentException('Kolo neprijíma tento hlas.');
+            if ($round->status !== 'live') {
+                throw new ElectionVoteRejected('round_not_accepting', 'Kolo neprijíma hlasovanie.');
             }
+
+            if ($candidate->election_round_id !== $round->id) {
+                throw new ElectionVoteRejected('candidate_not_in_round', 'Kandidát nepatrí do aktívneho kola.');
+            }
+
             $deviceWeight = $round->eligibleDeviceWeights()
                 ->where('device_id', $device->id)
-                ->firstOrFail();
+                ->first();
+
+            if ($deviceWeight === null) {
+                $attendee = VotingAttendee::query()
+                    ->where('voting_id', $round->contest->election->voting_id)
+                    ->where('device_id', $device->id)
+                    ->first();
+
+                if ($attendee !== null && (float) $attendee->weight <= 0) {
+                    throw new ElectionVoteRejected('zero_weight', 'Zariadenie má nulovú váhu.');
+                }
+
+                throw new ElectionVoteRejected('ineligible_device', 'Zariadenie nie je oprávnené hlasovať v tomto kole.');
+            }
 
             $existingVotes = ElectionRoundVote::query()
                 ->where('election_round_id', $round->id)
-                ->where('device_id', $device->id);
+                ->where('device_id', $device->id)
+                ->get();
             if ($round->contest->key === 'chairperson') {
                 $firstVote = $existingVotes->first();
                 if ($firstVote !== null) {
-                    return $firstVote;
+                    throw new ElectionVoteRejected('duplicate_vote', 'Zariadenie už v tomto kole hlasovalo za kandidáta.');
                 }
-            } elseif ($existingVotes->where('election_round_candidate_id', '!=', $candidate->id)->count() >= $round->contest->seat_count) {
-                throw new \InvalidArgumentException('Zariadenie už podporilo maximálny počet kandidátov v tomto kole.');
+            } elseif ($existingVotes->contains('election_round_candidate_id', $candidate->id)) {
+                throw new ElectionVoteRejected('duplicate_vote', 'Zariadenie už hlasovalo za tohto kandidáta.');
+            } elseif ($existingVotes->count() >= $this->remainingSeatCount($round)) {
+                throw new ElectionVoteRejected('max_candidates_reached', 'Zariadenie už podporilo maximálny počet kandidátov v tomto kole.');
             }
 
             return ElectionRoundVote::query()->updateOrCreate(
@@ -152,7 +174,7 @@ class ElectionRoundManager
                 ['first_name', 'asc'],
             ])
             ->values();
-        $seatCount = $round->contest()->value('seat_count');
+        $seatCount = $this->remainingSeatCount($round);
         $electedIds = $eligible->filter(fn (array $candidate): bool => $candidate['weighted_total'] >= $threshold)
             ->take($seatCount)
             ->pluck('id')
@@ -163,7 +185,20 @@ class ElectionRoundManager
             'majority_threshold' => $threshold,
             'accepted_device_count' => $round->votes()->distinct('device_id')->count('device_id'),
             'candidates' => $eligible->map(fn (array $candidate): array => [...$candidate, 'elected' => in_array($candidate['id'], $electedIds, true)])->all(),
+            'remaining_seats' => $this->remainingSeatCount($round),
         ];
+    }
+
+    private function remainingSeatCount(ElectionRound $round): int
+    {
+        $electedBeforeRound = ElectionRoundCandidate::query()
+            ->whereHas('round', fn ($query) => $query
+                ->where('election_contest_id', $round->election_contest_id)
+                ->where('round_number', '<', $round->round_number))
+            ->where('status', 'elected')
+            ->count();
+
+        return max(0, $round->contest()->value('seat_count') - $electedBeforeRound);
     }
 
     /**

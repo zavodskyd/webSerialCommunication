@@ -43,8 +43,9 @@ test('an active localized admission rejects a serial frame from outside its devi
     $result = app(SerialAgentFrameHandler::class)->handle(qomoFrameFor(10, 'A'));
 
     expect($result?->accepted)->toBeFalse();
-    expect($result?->rejectionReason)->toBe('record_failed');
+    expect($result?->rejectionReason)->toBe('outside_device_group');
     expect($admission->votes()->count())->toBe(0);
+    expect(VoteEvent::query()->where('device_id', $outsideDevice->id)->value('rejection_reason'))->toBe('outside_device_group');
 });
 
 /**

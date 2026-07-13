@@ -42,7 +42,7 @@ class VotingPresentation extends Component
             ? ElectionCandidateAdmission::query()->with(['contest', 'election.voting'])->find($activeRuntime->context['admission_id'] ?? 0)
             : null;
         $round = $activeRuntime->content_type === 'election_round'
-            ? ElectionRound::query()->with(['contest.election.voting', 'contest.rounds.candidates', 'candidates'])->find($activeRuntime->context['round_id'] ?? 0)
+            ? ElectionRound::query()->with(['contest.election.voting', 'contest.rounds.candidates.votes', 'candidates'])->find($activeRuntime->context['round_id'] ?? 0)
             : null;
         $contest = $activeRuntime->content_type === 'election_contest'
             ? ElectionContest::query()->with(['election.voting', 'candidates'])->find($activeRuntime->context['contest_id'] ?? 0)
@@ -60,6 +60,35 @@ class VotingPresentation extends Component
 
         $question = $this->currentQuestion();
 
+        $roundResults = $round ? $rounds->results($round) : null;
+        $roundResultsVisible = $round?->status === 'closed' && (bool) $this->voting->runtime_results_visible;
+        $displayRoundCandidates = collect($roundResults['candidates'] ?? [])
+            ->map(fn (array $candidate): array => [...$candidate, 'prior_elected' => false]);
+
+        if ($round !== null && ! $roundResultsVisible) {
+            $displayRoundCandidates = $displayRoundCandidates->sortBy([
+                ['last_name', 'asc'],
+                ['first_name', 'asc'],
+            ])->values();
+        }
+
+        if ($round !== null && $roundResultsVisible && $round->round_number > 1) {
+            $priorElectedCandidates = $round->contest->rounds
+                ->where('round_number', '<', $round->round_number)
+                ->flatMap(fn (ElectionRound $previousRound) => $previousRound->candidates)
+                ->where('status', 'elected')
+                ->unique('election_candidate_id')
+                ->map(fn ($candidate): array => [
+                    'id' => $candidate->id,
+                    'first_name' => $candidate->first_name,
+                    'last_name' => $candidate->last_name,
+                    'weighted_total' => (float) $candidate->votes->sum('weight_snapshot'),
+                    'elected' => false,
+                    'prior_elected' => true,
+                ]);
+            $displayRoundCandidates = $priorElectedCandidates->concat($displayRoundCandidates)->values();
+        }
+
         return view('livewire.voting.voting-presentation', [
             'question' => $question,
             'participantCount' => $question?->votes()->distinct('device_id')->count('device_id') ?? 0,
@@ -68,19 +97,10 @@ class VotingPresentation extends Component
             'admission' => $admission,
             'admissionResults' => $admission ? $admissions->summarizedResults($admission) : [],
             'round' => $round,
-            'roundResults' => $round ? $rounds->results($round) : null,
-            'roundResultsVisible' => $round?->status === 'closed' && (bool) $this->voting->runtime_results_visible,
+            'roundResults' => $roundResults,
+            'roundResultsVisible' => $roundResultsVisible,
+            'displayRoundCandidates' => $displayRoundCandidates->all(),
             'activeRoundCandidateId' => $activeRuntime->content_type === 'election_round' ? (int) ($activeRuntime->context['candidate_id'] ?? 0) : null,
-            'priorElectedCandidateIds' => $round?->status === 'closed'
-                ? $round->contest->rounds
-                    ->where('round_number', '<', $round->round_number)
-                    ->flatMap(fn (ElectionRound $previousRound) => $previousRound->candidates)
-                    ->where('status', 'elected')
-                    ->pluck('election_candidate_id')
-                    ->filter()
-                    ->all()
-                : [],
-            'roundCandidateSourceIds' => $round?->candidates->pluck('election_candidate_id', 'id')->all() ?? [],
             'contest' => $contest,
         ])->layout('layouts.presentation')->title('Prezentácia hlasovania');
     }

@@ -44,6 +44,28 @@ test('election management routes render their Livewire components', function () 
         ->assertSeeText('Kandidátky súťaží');
 });
 
+test('election management shows exports only after a round is closed', function () {
+    $voting = createElectionVoting();
+
+    Livewire::test(ElectionIndex::class)
+        ->assertSee('Export výsledkov')
+        ->assertSee('Export auditu')
+        ->assertSeeHtml('href="'.route('elections.exports.results', $voting).'"')
+        ->assertSeeHtml('href="'.route('elections.exports.audit', $voting).'"')
+        ->assertSeeHtml('aria-disabled="true"');
+
+    $voting->election->contests()->firstOrFail()->rounds()->create([
+        'round_number' => 1,
+        'status' => 'closed',
+        'eligible_weight_total' => 1,
+    ]);
+
+    Livewire::test(ElectionIndex::class)
+        ->assertSeeHtml('bg-emerald-600 text-white hover:bg-emerald-700')
+        ->assertSeeHtml('bg-sky-600 text-white hover:bg-sky-700')
+        ->assertDontSeeHtml('aria-disabled="true"');
+});
+
 test('standard voting list excludes elections', function () {
     Voting::query()->create(['name' => 'Štandardné hlasovanie']);
     createElectionVoting();

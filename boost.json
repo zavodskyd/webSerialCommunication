@@ -1,6 +1,7 @@
 {
     "agents": [
         "codex",
+        "cursor",
         "claude_code"
     ],
     "cloud": false,

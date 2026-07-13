@@ -3,7 +3,7 @@
 ## Architektúra
 
 - Rozšíriť `Voting` o `voting_type = standard|election`. Existujúce hlasovania zostanú `standard` bez funkčných zmien.
-- Zachovať jeden sériový pipeline; `VotingTypeHandler` deleguje vstup, výsledky a prezentačné dáta na `StandardVotingHandler` alebo `ElectionVotingHandler`.
+- Zachovať jeden sériový pipeline; existujúci runtime router vyhodnotí aktívny prezentačný kontext a odošle rámec iba štandardnému hlasovaniu, doplneniu kandidáta alebo volebnému kolu, ktoré je práve aktívne.
 - Zaviesť perzistentný globálny stav aktívnej prezentácie (`presentation_runtime`) s aktívnym hlasovaním/voľbami a kontextom otázky, doplnenia kandidáta alebo volebného kola.
   - Existujúce jedno prezentačné okno dostane stabilnú spoločnú route.
   - Konzola pri aktivovaní, výbere alebo spustení kontextu aktualizuje aktívnu prezentáciu.
@@ -42,11 +42,11 @@
   - priebeh je rovnaký ako dnešné hlasovanie ZA/PROTI/ZDRŽAL SA;
   - v rámci časového intervalu môže zariadenie hlas opraviť; rozhoduje jeho posledný platný prijatý hlas;
   - ak má kandidát priradenú lokalitu/skupinu zariadení, prijaté sú len hlasy z tejto skupiny; bez priradenej lokality hlasujú všetky zariadenia;
-  - návrh sa automaticky schváli pri `ZA > polovica všetkých platne odovzdaných vážených hlasov`.
+  - návrh sa automaticky schváli pri `ZA >= floor(súčet snapshotov váh všetkých oprávnených zariadení / 2) + 1`; menovateľ sa uzamkne pri otvorení návrhu a neskoršia zmena globálnych váh ho neovplyvní.
 - Volebná konzola:
   - Predseda: zariadenie môže kladne hlasovať iba za jedného kandidáta v kole. Ak sú v prvom kole aspoň dvaja kandidáti a nikto neuspeje, postúpia dvaja s najvyšším nenulovým výsledkom do konečného druhého kola. Pri jedinom neúspešnom kandidátovi sa druhé kolo nevytvorí.
-  - Predstavenstvo a komisia: zariadenie môže podporiť najviac počet zostávajúcich mandátov.
-  - Nadpolovičná väčšina sa v každom kole počíta zo súčtu všetkých prijatých vážených hlasov za celé kolo, nie samostatne pre kandidáta ani z účasti. Hranica je `floor(súčet / 2) + 1`; ak pri voľbe predsedu získajú dvaja kandidáti 60 a 100 vážených hlasov, súčet kola je 160 a nadpolovičná väčšina je 81.
+  - Predstavenstvo a komisia: zariadenie môže podporiť najviac počet zostávajúcich mandátov; ak sú z troch mandátov dva už obsadené, v ďalšom kole môže podporiť najviac jedného kandidáta.
+  - Nadpolovičná väčšina sa v každom kole počíta zo súčtu snapshotov váh všetkých oprávnených zariadení pre dané kolo, nie zo skutočnej účasti ani samostatne pre kandidáta. Hranica je `floor(súčet / 2) + 1`; pri oprávnených zariadeniach s váhami 60 a 100 je súčet kola 160 a nadpolovičná väčšina 81 aj vtedy, keď jedno zariadenie hlas neodovzdá.
   - Kandidát je zvolený pri dosiahnutí tejto hranice; rovnaké pravidlo platí pre každú súťaž aj každé ďalšie kolo.
   - Pri prebytku úspešných kandidátov sa vyberie iba potrebný počet podľa hlasov a potom abecedy; kolo končí.
   - Pri nedostatku úspešných kandidátov vznikne ďalšie kolo; kandidát s najnižším výsledkom vypadáva, pri zhode abecedne nižšie meno.
@@ -56,7 +56,7 @@
 - Počas otvoreného hlasovania zobrazí kandidátov v abecednej tabuľke; aktívne hlasovaný kandidát bude mať zelené pozadie riadku.
 - Pri výsledku zobrazí rovnakú tabuľku zoradenú podľa počtu hlasov:
   - úspešní kandidáti aktuálneho kola: zelené pozadie;
-  - pri druhom a ďalšom kole budú už zvolení kandidáti z predchádzajúcich kôl na začiatku tabuľky so žltým pozadím;
+  - pri zobrazení výsledku druhého a ďalšieho kola budú už zvolení kandidáti z predchádzajúcich kôl doplnení na začiatok tabuľky so žltým pozadím; počas otvoreného hlasovania ďalšieho kola sa nezobrazujú;
   - ostatní kandidáti budú bez farebného pozadia.
 - Tabuľka bude obsahovať poradie, meno kandidáta, počet hlasov a zrozumiteľný stav kandidáta; pri otvorenom hlasovaní zobrazí aj aktuálne obsadzované a zostávajúce mandáty.
 - Prezentačný layout bude responzívny a bez scrollovania:
@@ -72,11 +72,11 @@
 - Existujúca `VotingConsole` zostane štandardnou konzolou; runtime router odošle rámec len aktuálne aktívnemu kontextu.
 - Prijatie hlasu bude transakčné, aby paralelné sériové rámce neprekročili limit hlasov zariadenia v kole.
 - Audit zaznamená odmietnutia: mimo skupiny, nulová váha, neaktívne kolo, neplatné tlačidlo, duplicitný hlas a prekročený limit. Opakovaný platný hlas pri dopĺňaní kandidáta sa neodmieta, ale nahrádza predchádzajúci.
-- Pest testy pokryjú migrácie, skupiny, dopĺňanie kandidáta a opravu hlasu, hranice väčšiny, priebeh kôl, limity hlasov, audit, prepínanie prezentácie a exporty.
-- Browser testy overia prezentačnú tabuľku v nízkom aj širokom viewport-e, pri malom aj veľkom počte kandidátov, bez scrollovania a bez prekročenia hraníc okna.
+- Pest testy pokryjú migrácie, skupiny, dopĺňanie kandidáta a opravu hlasu, hranice väčšiny, priebeh kôl, limity hlasov, konkrétne auditné dôvody odmietnutí, prepínanie prezentácie a export volebných výsledkov aj auditu.
+- Prezentačná tabuľka sa fyzicky overí v nízkom aj širokom viewport-e, pri malom aj veľkom počte kandidátov, bez scrollovania a bez prekročenia hraníc okna; automatizované browser testy nie sú súčasťou tejto implementácie.
 
 ## Predpoklady
 
-- Váha zariadenia určuje hodnotu hlasu; menovateľ väčšiny je súčet váh všetkých platne prijatých hlasov v konkrétnom kole.
+- Váha zariadenia určuje hodnotu hlasu; menovateľ väčšiny je súčet snapshotov váh všetkých oprávnených zariadení uzamknutý pri otvorení konkrétneho kola alebo návrhu na doplnenie kandidáta.
 - Skupiny obmedzujú iba hlasovanie o voliteľnom doplnení kandidáta, ak je kandidátovi priradená lokalita; bez priradenej lokality sa toto obmedzenie nepoužije. Samotné voľby súťaže skupiny neobmedzujú.
 - Kandidátka sa pred otvorením volebného kola uzamkne; zmeny prebehnú cez prípravnú fázu doplnenia kandidáta.

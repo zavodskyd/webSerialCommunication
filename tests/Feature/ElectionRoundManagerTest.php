@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\ElectionVoteRejected;
 use App\Models\Device;
 use App\Models\Election;
 use App\Models\ElectionContest;
@@ -43,7 +44,11 @@ test('a round records one current weighted vote per device and candidate snapsho
     $round = openElectionRound($manager, $contest);
     $candidate = $round->candidates()->firstOrFail();
     $manager->recordVote($round, $candidate, $device);
-    $manager->recordVote($round, $candidate, $device);
+    try {
+        $manager->recordVote($round, $candidate, $device);
+    } catch (ElectionVoteRejected $exception) {
+        expect($exception->reason)->toBe('duplicate_vote');
+    }
 
     expect($round->votes()->count())->toBe(1);
     expect($round->votes()->value('weight_snapshot'))->toBe('3.00');
@@ -80,7 +85,11 @@ test('a chairperson device keeps its first support and ignores a later candidate
     $round = openElectionRound($manager, $contest);
 
     $manager->recordVote($round, $round->candidates()->firstOrFail(), $device);
-    $manager->recordVote($round, $round->candidates()->skip(1)->firstOrFail(), $device);
+    try {
+        $manager->recordVote($round, $round->candidates()->skip(1)->firstOrFail(), $device);
+    } catch (ElectionVoteRejected $exception) {
+        expect($exception->reason)->toBe('duplicate_vote');
+    }
 
     expect($round->votes()->count())->toBe(1);
     expect($round->votes()->first()->election_round_candidate_id)->toBe($round->candidates()->first()->id);
@@ -146,6 +155,30 @@ test('a multi-seat contest carries forward unsuccessful candidates after elimina
     expect($round->candidates()->where('last_name', 'Cibulík')->value('status'))->toBe('eliminated');
     expect($nextRound->round_number)->toBe(2);
     expect($nextRound->candidates()->pluck('last_name')->all())->toBe(['Bérová', 'Dudová']);
+});
+
+test('a successor round limits each device to the remaining seats', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->where('key', 'board-solinky')->firstOrFail();
+    foreach (range(1, 5) as $number) {
+        $contest->candidates()->create(['first_name' => 'Kandidát', 'last_name' => (string) $number]);
+    }
+    $device = electionRoundVoter($voting, '250', 10);
+    $manager = app(ElectionRoundManager::class);
+    $firstRound = openElectionRound($manager, $contest);
+    $manager->recordVote($firstRound, $firstRound->candidates()->firstOrFail(), $device);
+    $manager->recordVote($firstRound, $firstRound->candidates()->skip(1)->firstOrFail(), $device);
+    $manager->close($firstRound);
+
+    $secondRound = $contest->rounds()->reorder()->latest('round_number')->firstOrFail();
+    $manager->open($secondRound);
+    $manager->recordVote($secondRound, $secondRound->candidates()->firstOrFail(), $device);
+
+    expect($manager->results($secondRound)['remaining_seats'])->toBe(1);
+    expect(fn () => $manager->recordVote($secondRound, $secondRound->candidates()->skip(1)->firstOrFail(), $device))
+        ->toThrow(ElectionVoteRejected::class, 'Zariadenie už podporilo maximálny počet kandidátov v tomto kole.');
 });
 
 test('a successor round includes candidates added after the preceding round', function () {

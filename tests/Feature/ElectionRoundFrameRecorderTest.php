@@ -38,6 +38,40 @@ test('a rejected round serial frame is audited without creating a vote', functio
     expect(VoteEvent::query()->where('election_round_candidate_id', $candidate->id)->count())->toBe(1);
 });
 
+test('a duplicate round vote is rejected with a specific audit reason', function () {
+    [$round] = activeRoundFixture();
+    $handler = app(SerialAgentFrameHandler::class);
+
+    expect($handler->handle(qomoFrameFor(1, 'A'))?->accepted)->toBeTrue();
+    $duplicate = $handler->handle(qomoFrameFor(1, 'A'));
+
+    expect($duplicate?->accepted)->toBeFalse();
+    expect($duplicate?->rejectionReason)->toBe('duplicate_vote');
+    expect($round->votes()->count())->toBe(1);
+    expect(VoteEvent::query()->where('election_round_id', $round->id)->latest('id')->value('rejection_reason'))->toBe('duplicate_vote');
+});
+
+test('a zero weight device is rejected and audited without an exception leak', function () {
+    [$round] = activeRoundFixture();
+    $device = Device::query()->create([
+        'device_number' => '002',
+        'code_a' => '', 'code_b' => '', 'code_c' => '', 'code_d' => '', 'code_e' => '', 'code_f' => '', 'code_ruka' => '',
+    ]);
+    VotingAttendee::query()->create([
+        'voting_id' => $round->contest->election->voting_id,
+        'device_id' => $device->id,
+        'weight' => 0,
+        'is_present' => true,
+        'can_vote' => true,
+    ]);
+
+    $result = app(SerialAgentFrameHandler::class)->handle(qomoFrameFor(2, 'A'));
+
+    expect($result?->accepted)->toBeFalse();
+    expect($result?->rejectionReason)->toBe('zero_weight');
+    expect(VoteEvent::query()->where('device_id', $device->id)->value('rejection_reason'))->toBe('zero_weight');
+});
+
 test('a round serial frame is rejected while the candidate collector is stopped', function () {
     [$round] = activeRoundFixture();
     $round->contest->election->voting->update(['runtime_collector_enabled' => false]);
@@ -108,6 +142,70 @@ test('election presentation highlights the selected candidate before the timer s
         ->assertSuccessful()
         ->assertSee($candidate->first_name.' '.$candidate->last_name)
         ->assertSee('bg-emerald-100', false);
+});
+
+test('open election presentation remains alphabetical after candidates receive different totals', function () {
+    [$round, , $device] = activeRoundFixture(3);
+    $lastCandidate = $round->candidates()->orderByDesc('sort_order')->firstOrFail();
+    $round->votes()->create([
+        'election_round_candidate_id' => $lastCandidate->id,
+        'device_id' => $device->id,
+        'weight_snapshot' => 4,
+        'voted_at' => now(),
+    ]);
+    $alphabeticalNames = $round->candidates()
+        ->orderBy('last_name')
+        ->orderBy('first_name')
+        ->get()
+        ->map(fn ($candidate): string => $candidate->first_name.' '.$candidate->last_name)
+        ->all();
+
+    $this->get(route('votings.presentation', $round->contest->election->voting))
+        ->assertSuccessful()
+        ->assertSeeInOrder($alphabeticalNames);
+});
+
+test('later round results prepend candidates elected in prior rounds with yellow styling', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 1]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->where('key', 'board-hliny')->firstOrFail();
+    $winner = $contest->candidates()->create(['first_name' => 'Anna', 'last_name' => 'Adamová']);
+    $remaining = $contest->candidates()->create(['first_name' => 'Bea', 'last_name' => 'Bérová']);
+
+    $firstRound = $contest->rounds()->create(['round_number' => 1, 'status' => 'closed', 'eligible_weight_total' => 1]);
+    $firstWinner = $firstRound->candidates()->create([
+        'election_candidate_id' => $winner->id,
+        'first_name' => $winner->first_name,
+        'last_name' => $winner->last_name,
+        'sort_order' => 1,
+        'status' => 'elected',
+    ]);
+    $device = Device::query()->create([
+        'device_number' => '001',
+        'code_a' => '', 'code_b' => '', 'code_c' => '', 'code_d' => '', 'code_e' => '', 'code_f' => '', 'code_ruka' => '',
+    ]);
+    $firstWinner->votes()->create([
+        'election_round_id' => $firstRound->id,
+        'device_id' => $device->id,
+        'weight_snapshot' => 1,
+        'voted_at' => now(),
+    ]);
+    $secondRound = $contest->rounds()->create(['round_number' => 2, 'status' => 'closed', 'eligible_weight_total' => 1]);
+    $secondRound->candidates()->create([
+        'election_candidate_id' => $remaining->id,
+        'first_name' => $remaining->first_name,
+        'last_name' => $remaining->last_name,
+        'sort_order' => 1,
+    ]);
+    $voting->update(['runtime_results_visible' => true]);
+    app(PresentationRuntimeManager::class)->activate($voting, 'election_round', ['round_id' => $secondRound->id]);
+
+    $this->get(route('votings.presentation', $voting))
+        ->assertSuccessful()
+        ->assertSeeInOrder(['Anna Adamová', 'Bea Bérová'])
+        ->assertSee('bg-amber-100', false)
+        ->assertSee('Zvolený skôr');
 });
 
 /**

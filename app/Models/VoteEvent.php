@@ -46,4 +46,19 @@ class VoteEvent extends Model
     {
         return $this->belongsTo(Device::class);
     }
+
+    public function electionRound(): BelongsTo
+    {
+        return $this->belongsTo(ElectionRound::class);
+    }
+
+    public function electionRoundCandidate(): BelongsTo
+    {
+        return $this->belongsTo(ElectionRoundCandidate::class);
+    }
+
+    public function electionCandidateAdmission(): BelongsTo
+    {
+        return $this->belongsTo(ElectionCandidateAdmission::class);
+    }
 }

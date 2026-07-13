@@ -56,7 +56,11 @@ class ElectionIndex extends Component
     {
         $votings = Voting::query()
             ->where('voting_type', 'election')
-            ->with(['election' => fn ($query) => $query->withCount(['contests', 'deviceGroups'])])
+            ->with(['election' => fn ($query) => $query
+                ->withCount(['contests', 'deviceGroups'])
+                ->with(['contests' => fn ($query) => $query->withCount([
+                    'rounds as closed_rounds_count' => fn ($query) => $query->where('status', 'closed'),
+                ])])])
             ->when(! $this->showAll, fn ($query) => $query->whereNull('archived_at'))
             ->latest()
             ->get();

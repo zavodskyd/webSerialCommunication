@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ElectionVoteRejected;
 use App\Models\Device;
 use App\Models\ElectionCandidateAdmission;
 use App\Models\PresentationRuntime;
@@ -51,6 +52,8 @@ class ElectionCandidateAdmissionFrameRecorder
 
         try {
             $this->admissions->recordVote($admission, $device, $decodedFrame['buttonName']);
+        } catch (ElectionVoteRejected $exception) {
+            return $this->logResult($admission, $hex, $this->rejected($exception->getMessage(), $device->device_number, $decodedFrame['buttonName'], $this->admissions->summarizedResults($admission), $exception->reason));
         } catch (InvalidArgumentException $exception) {
             return $this->logResult($admission, $hex, $this->rejected($exception->getMessage(), $device->device_number, $decodedFrame['buttonName'], $this->admissions->summarizedResults($admission), 'record_failed'));
         }

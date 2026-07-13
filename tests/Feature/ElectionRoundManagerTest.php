@@ -47,6 +47,7 @@ test('a round records one current weighted vote per device and candidate snapsho
 
     expect($round->votes()->count())->toBe(1);
     expect($round->votes()->value('weight_snapshot'))->toBe('3.00');
+    expect($manager->results($round)['accepted_device_count'])->toBe(1);
 });
 
 test('majority is calculated from the eligible device weight snapshot', function () {

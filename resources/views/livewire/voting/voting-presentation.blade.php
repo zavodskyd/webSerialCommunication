@@ -1,14 +1,14 @@
 <div wire:poll.500ms class="relative h-screen overflow-hidden bg-white text-slate-950">
     @if ($contest)
         <div class="flex h-full flex-col px-10 py-5">
-            <header class="flex items-center gap-6">
-                <div class="flex h-14 w-48 items-center justify-center">
+            <header class="flex items-start gap-10">
+                <div class="flex h-36 w-96 items-center justify-center">
                     @if ($voting->logo_path)
                         <img src="{{ route('votings.logo', $voting) }}" alt="Logo hlasovania"
                             class="h-full w-full object-contain">
                     @endif
                 </div>
-                <div>
+                <div class="flex min-h-36 flex-1 flex-col items-start justify-center">
                     <h1 class="text-4xl font-semibold">{{ $voting->title ?: $voting->name }}</h1>
                     <p class="mt-2 text-3xl font-semibold text-emerald-700">{{ $contest->name }}</p>
                 </div>
@@ -31,14 +31,14 @@
         </div>
     @elseif ($round)
         <div class="flex h-full flex-col px-10 py-5">
-            <header class="flex items-center gap-6">
-                <div class="flex h-14 w-48 items-center justify-center">
+            <header class="flex items-start gap-10">
+                <div class="flex h-36 w-96 items-center justify-center">
                     @if ($voting->logo_path)
                         <img src="{{ route('votings.logo', $voting) }}" alt="Logo hlasovania"
                             class="h-full w-full object-contain">
                     @endif
                 </div>
-                <div>
+                <div class="flex min-h-36 flex-1 flex-col items-start justify-center">
                     <h1 class="text-4xl font-semibold">{{ $voting->title ?: $voting->name }}</h1>
                     <p class="mt-2 text-3xl font-semibold text-emerald-700">{{ $round->contest->name }} · kolo
                         {{ $round->round_number }}</p>
@@ -47,6 +47,8 @@
             <main class="mt-6 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_18rem] gap-8">
                 @php
                     $candidateCount = count($roundResults['candidates']);
+                    $timerIsActive = $voting->runtime_collector_enabled && $voting->runtime_remaining_seconds <= 30;
+                    $timerIsWarning = $timerIsActive && $voting->runtime_remaining_seconds <= 5;
                 @endphp
                 <div
                     x-data="{
@@ -89,15 +91,9 @@
                         'flex min-h-0 flex-col overflow-hidden' => $candidateCount >= 8,
                     ])
                 >
-                    @if ($candidateCount >= 8)
-                        <div class="mb-3 border-b pb-3 text-xl font-semibold text-slate-500">
-                            Kandidátka · poradie, meno, hlasy a stav
-                        </div>
-                    @else
-                        <div class="grid grid-cols-[5rem_1fr_12rem_10rem] gap-4 border-b pb-3 text-xl font-semibold text-slate-500">
-                            <span>Por.</span><span>Kandidát</span><span>Hlasy</span><span>Stav</span>
-                        </div>
-                    @endif
+                    <div class="grid grid-cols-[5rem_1fr_12rem_10rem] gap-4 border-b pb-3 text-xl font-semibold text-slate-500">
+                        <span>Por.</span><span>Kandidát</span><span>Hlasy</span><span>Stav</span>
+                    </div>
                     <div
                         x-ref="candidateRows"
                         :style="compact ? `grid-template-columns: repeat(${columns}, minmax(0, 1fr)); grid-template-rows: repeat(${rows}, minmax(0, 1fr));` : ''"
@@ -109,9 +105,9 @@
                         @foreach ($roundResults['candidates'] as $index => $candidate)
                             @php
                                 $sourceCandidateId = $roundCandidateSourceIds[$candidate['id']] ?? null;
-                                $isActiveCandidate = $round->status === 'live' && $activeRoundCandidateId === $candidate['id'];
-                                $isCurrentWinner = $round->status === 'closed' && $candidate['elected'];
-                                $isPriorWinner = $round->status === 'closed' && in_array($sourceCandidateId, $priorElectedCandidateIds, true);
+                                $isActiveCandidate = ! $roundResultsVisible && $activeRoundCandidateId === $candidate['id'];
+                                $isCurrentWinner = $roundResultsVisible && $candidate['elected'];
+                                $isPriorWinner = $roundResultsVisible && in_array($sourceCandidateId, $priorElectedCandidateIds, true);
                             @endphp
                             <div @class([
                                 'grid min-h-0 items-center gap-3 overflow-hidden border-b px-3 transition-colors',
@@ -133,12 +129,24 @@
                     </div>
                 </div>
                 <aside class="flex flex-col justify-between border-l pl-6 text-right">
-                    <div class="space-y-3 text-2xl">
-                        <p>{{ $round->status === 'live' ? 'Prebieha hlasovanie' : 'Výsledok kola' }}</p>
-                        <p class="text-xl text-slate-950">Možno označiť najviac {{ $round->contest->seat_count }} kandidátov.</p>
-                        <p>Väčšina: <strong>{{ $roundResults['majority_threshold'] }}</strong></p>
+                    <div class="space-y-6">
+                        <div @class([
+                            'ml-auto inline-flex min-w-64 items-center justify-center px-6 py-3 text-5xl font-semibold tracking-normal transition-colors',
+                            'bg-emerald-500 text-white' => $timerIsActive && ! $timerIsWarning,
+                            'bg-orange-500 text-white' => $timerIsWarning,
+                            'bg-transparent text-slate-950' => ! $timerIsActive,
+                        ])>
+                            {{ sprintf('%02d:%02d', intdiv($voting->runtime_remaining_seconds, 60), $voting->runtime_remaining_seconds % 60) }}
+                        </div>
+                        <p class="border-t border-slate-200 pt-6 text-xl text-slate-950">
+                            Možno označiť najviac
+                            <strong class="text-5xl font-bold text-slate-950">{{ $round->contest->seat_count }}</strong>
+                            kandidátov.
+                        </p>
                     </div>
-                    <div class="text-xl text-slate-500">Prijaté vážené hlasy: {{ $roundResults['total_weight'] }}</div>
+                    <div class="text-xl text-slate-500">
+                        Zariadení s platným hlasom: <strong class="text-3xl font-bold text-slate-950">{{ $roundResults['accepted_device_count'] }}</strong>
+                    </div>
                 </aside>
             </main>
         </div>

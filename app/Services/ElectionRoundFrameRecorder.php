@@ -23,7 +23,7 @@ class ElectionRoundFrameRecorder
         $round = ElectionRound::query()->find($runtime->context['round_id'] ?? 0);
         $candidate = ElectionRoundCandidate::query()->find($runtime->context['candidate_id'] ?? 0);
         $decoded = $this->decoder->decode($hex);
-        if (! $round || ! $candidate || ! $decoded || $decoded['buttonName'] !== 'A') {
+        if (! $round || ! $candidate || ! $round->contest->election->voting->runtime_collector_enabled || ! $decoded || $decoded['buttonName'] !== 'A') {
             return $this->logResult($round, $candidate, $hex, new VoteRecordingResult(false, 'Tento rámec sa do voľby kandidáta nezapočítava.', null, $decoded['buttonName'] ?? null, [], 'non_voting_button'));
         }
         $device = Device::query()->whereIn('device_number', [(string) $decoded['deviceNumber'], str_pad((string) $decoded['deviceNumber'], 3, '0', STR_PAD_LEFT)])->first();

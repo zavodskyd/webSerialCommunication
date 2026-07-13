@@ -38,6 +38,16 @@ test('a rejected round serial frame is audited without creating a vote', functio
     expect(VoteEvent::query()->where('election_round_candidate_id', $candidate->id)->count())->toBe(1);
 });
 
+test('a round serial frame is rejected while the candidate collector is stopped', function () {
+    [$round] = activeRoundFixture();
+    $round->contest->election->voting->update(['runtime_collector_enabled' => false]);
+
+    $result = app(SerialAgentFrameHandler::class)->handle(qomoFrameFor(1, 'A'));
+
+    expect($result?->accepted)->toBeFalse();
+    expect($round->votes()->count())->toBe(0);
+});
+
 test('election presentation includes the adaptive no-scroll candidate table', function () {
     [$round] = activeRoundFixture(8);
 
@@ -45,7 +55,9 @@ test('election presentation includes the adaptive no-scroll candidate table', fu
         ->assertSuccessful()
         ->assertSee('data-election-candidate-table', false)
         ->assertSee('grid-flow-col', false)
-        ->assertSee('ResizeObserver', false);
+        ->assertSee('ResizeObserver', false)
+        ->assertSee('grid-cols-[5rem_1fr_12rem_10rem]', false)
+        ->assertDontSee('Kandidátka · poradie, meno, hlasy a stav');
 });
 
 test('election presentation keeps the original row layout below the compacting threshold', function () {
@@ -54,7 +66,9 @@ test('election presentation keeps the original row layout below the compacting t
     $this->get(route('votings.presentation', $round->contest->election->voting))
         ->assertSuccessful()
         ->assertSee('compact: false', false)
-        ->assertSee('grid-cols-[5rem_1fr_12rem_10rem]', false);
+        ->assertSee('grid-cols-[5rem_1fr_12rem_10rem]', false)
+        ->assertSee('flex h-36 w-96 items-center justify-center', false)
+        ->assertSee('flex min-h-36 flex-1 flex-col items-start justify-center', false);
 });
 
 test('election presentation tells voters the maximum number of candidates they can mark', function () {
@@ -62,8 +76,38 @@ test('election presentation tells voters the maximum number of candidates they c
 
     $this->get(route('votings.presentation', $round->contest->election->voting))
         ->assertSuccessful()
-        ->assertSee('Možno označiť najviac '.$round->contest->seat_count.' kandidátov.')
+        ->assertSee('Možno označiť najviac')
+        ->assertSee((string) $round->contest->seat_count)
+        ->assertSee('kandidátov.')
         ->assertDontSee('Mandátov:');
+});
+
+test('election presentation shows the remaining time in its info panel', function () {
+    [$round] = activeRoundFixture();
+    $round->contest->election->voting->update([
+        'runtime_collector_enabled' => true,
+        'runtime_timer_running' => true,
+        'runtime_remaining_seconds' => 29,
+    ]);
+
+    $this->get(route('votings.presentation', $round->contest->election->voting))
+        ->assertSuccessful()
+        ->assertSee('00:29')
+        ->assertSee('min-w-64 items-center justify-center px-6 py-3 text-5xl font-semibold', false)
+        ->assertSee('Zariadení s platným hlasom:')
+        ->assertDontSee('Väčšina:')
+        ->assertDontSee('Čaká sa na spustenie hlasovania');
+});
+
+test('election presentation highlights the selected candidate before the timer starts', function () {
+    [$round, $candidate] = activeRoundFixture();
+    $round->update(['status' => 'draft']);
+    $round->contest->election->voting->update(['runtime_collector_enabled' => false]);
+
+    $this->get(route('votings.presentation', $round->contest->election->voting))
+        ->assertSuccessful()
+        ->assertSee($candidate->first_name.' '.$candidate->last_name)
+        ->assertSee('bg-emerald-100', false);
 });
 
 /**
@@ -102,6 +146,7 @@ function activeRoundFixture(int $candidateCount = 1): array
         'round_id' => $round->id,
         'candidate_id' => $candidate->id,
     ]);
+    $voting->update(['runtime_collector_enabled' => true]);
 
     return [$round, $candidate, $device];
 }

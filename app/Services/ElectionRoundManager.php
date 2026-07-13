@@ -132,7 +132,7 @@ class ElectionRoundManager
     }
 
     /**
-     * @return array{total_weight: float, majority_threshold: float, candidates: array<int, array{id: int, first_name: string, last_name: string, weighted_total: float, elected: bool}>}
+     * @return array{total_weight: float, majority_threshold: float, accepted_device_count: int, candidates: array<int, array{id: int, first_name: string, last_name: string, weighted_total: float, elected: bool}>}
      */
     public function results(ElectionRound $round): array
     {
@@ -161,6 +161,7 @@ class ElectionRoundManager
         return [
             'total_weight' => $totalWeight,
             'majority_threshold' => $threshold,
+            'accepted_device_count' => $round->votes()->distinct('device_id')->count('device_id'),
             'candidates' => $eligible->map(fn (array $candidate): array => [...$candidate, 'elected' => in_array($candidate['id'], $electedIds, true)])->all(),
         ];
     }

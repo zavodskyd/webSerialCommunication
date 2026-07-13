@@ -69,6 +69,7 @@ class VotingPresentation extends Component
             'admissionResults' => $admission ? $admissions->summarizedResults($admission) : [],
             'round' => $round,
             'roundResults' => $round ? $rounds->results($round) : null,
+            'roundResultsVisible' => $round?->status === 'closed' && (bool) $this->voting->runtime_results_visible,
             'activeRoundCandidateId' => $activeRuntime->content_type === 'election_round' ? (int) ($activeRuntime->context['candidate_id'] ?? 0) : null,
             'priorElectedCandidateIds' => $round?->status === 'closed'
                 ? $round->contest->rounds

@@ -1,4 +1,5 @@
 * text=auto eol=lf
+database/database.sqlite -text
 
 *.blade.php diff=html
 *.css diff=css

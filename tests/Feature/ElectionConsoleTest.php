@@ -5,6 +5,16 @@ use App\Models\Election;
 use App\Models\Voting;
 use Livewire\Livewire;
 
+test('the election console links back to its editor', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election->createDefaultContests();
+
+    Livewire::test(ElectionConsole::class, ['voting' => $voting])
+        ->assertSee('Späť do editora')
+        ->assertSeeHtml('href="'.route('elections.edit', $voting).'"');
+});
+
 test('the election console automatically selects the first candidate of a created round', function () {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
     $election = Election::query()->create(['voting_id' => $voting->id]);

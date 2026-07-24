@@ -19,6 +19,7 @@ test('the last valid admission vote replaces the prior device vote and accepted 
         'first_name' => 'Jana',
         'last_name' => 'Nováková',
     ]);
+    $draftRound = $contest->rounds()->create(['round_number' => 2, 'status' => 'draft']);
 
     $manager = app(ElectionCandidateAdmissionManager::class);
     $manager->start($admission);
@@ -33,6 +34,7 @@ test('the last valid admission vote replaces the prior device vote and accepted 
     $manager->showResults($admission);
     expect($manager->resolve($admission)->status)->toBe('accepted');
     expect($contest->candidates()->where('first_name', 'Jana')->where('last_name', 'Nováková')->exists())->toBeTrue();
+    expect($draftRound->candidates()->where('first_name', 'Jana')->where('last_name', 'Nováková')->exists())->toBeTrue();
 });
 
 test('local candidate admission uses the participant quorum snapshot with weighted yes votes', function () {

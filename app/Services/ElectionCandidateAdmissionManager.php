@@ -152,7 +152,11 @@ class ElectionCandidateAdmissionManager
             $accepted = $yes >= $majorityThreshold;
             $admission->update(['status' => $accepted ? 'accepted' : 'rejected', 'resolved_at' => now()]);
             if ($accepted) {
-                $admission->contest->candidates()->firstOrCreate(['first_name' => $admission->first_name, 'last_name' => $admission->last_name], ['status' => 'approved']);
+                $candidate = $admission->contest->candidates()->firstOrCreate(
+                    ['first_name' => $admission->first_name, 'last_name' => $admission->last_name],
+                    ['status' => 'approved'],
+                );
+                app(ElectionRoundManager::class)->addCandidateToLatestDraft($candidate);
             }
 
             return $admission->refresh();

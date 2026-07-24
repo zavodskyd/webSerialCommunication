@@ -104,6 +104,56 @@ test('user can manage direct candidates and non-overlapping device groups', func
     expect($election->deviceGroups()->orderBy('sort_order')->pluck('quorum_participant_count')->all())->toBe([120, 80]);
 });
 
+test('manual candidate changes synchronize the latest draft round only', function () {
+    $voting = createElectionVoting();
+    $contest = $voting->election->contests()->firstOrFail();
+    $existingCandidate = $contest->candidates()->create([
+        'first_name' => 'Zuzana',
+        'last_name' => 'Zelená',
+        'status' => 'approved',
+    ]);
+    $closedRound = $contest->rounds()->create(['round_number' => 1, 'status' => 'closed']);
+    $closedRound->candidates()->create([
+        'election_candidate_id' => $existingCandidate->id,
+        'first_name' => 'Zuzana',
+        'last_name' => 'Zelená',
+        'sort_order' => 1,
+    ]);
+    $draftRound = $contest->rounds()->create(['round_number' => 2, 'status' => 'draft']);
+    $draftRound->candidates()->create([
+        'election_candidate_id' => $existingCandidate->id,
+        'first_name' => 'Zuzana',
+        'last_name' => 'Zelená',
+        'sort_order' => 1,
+    ]);
+
+    $component = Livewire::test(ElectionEditor::class, ['voting' => $voting])
+        ->set("candidateDrafts.{$contest->id}.first_name", 'Anna')
+        ->set("candidateDrafts.{$contest->id}.last_name", 'Adamová')
+        ->call('addCandidate', $contest->id)
+        ->assertHasNoErrors();
+
+    $newCandidate = $contest->candidates()->where('last_name', 'Adamová')->firstOrFail();
+    $contestRows = collect($component->get('contestRows'));
+    $contestIndex = $contestRows->search(fn (array $row): bool => $row['id'] === $contest->id);
+    $candidateIndex = collect($contestRows[$contestIndex]['candidates'])
+        ->search(fn (array $row): bool => $row['id'] === $newCandidate->id);
+
+    $component
+        ->set("contestRows.{$contestIndex}.candidates.{$candidateIndex}.first_name", 'Beáta')
+        ->set("contestRows.{$contestIndex}.candidates.{$candidateIndex}.last_name", 'Bielová')
+        ->call('saveCandidate', $newCandidate->id)
+        ->assertHasNoErrors();
+
+    expect($draftRound->candidates()->orderBy('sort_order')->pluck('last_name')->all())
+        ->toBe(['Bielová', 'Zelená']);
+
+    $component->call('removeCandidate', $newCandidate->id)->assertHasNoErrors();
+
+    expect($draftRound->candidates()->pluck('last_name')->all())->toBe(['Zelená'])
+        ->and($closedRound->candidates()->pluck('last_name')->all())->toBe(['Zelená']);
+});
+
 test('device group requires a positive quorum participant count', function () {
     $voting = createElectionVoting();
 

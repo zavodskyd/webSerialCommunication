@@ -189,6 +189,78 @@ class ElectionRoundManager
         ];
     }
 
+    public function addCandidateToLatestDraft(ElectionCandidate $candidate): void
+    {
+        DB::transaction(function () use ($candidate): void {
+            $round = $this->latestDraftRoundForUpdate($candidate->contest);
+            if ($round === null) {
+                return;
+            }
+
+            $round->candidates()->updateOrCreate(
+                ['election_candidate_id' => $candidate->id],
+                [
+                    'first_name' => $candidate->first_name,
+                    'last_name' => $candidate->last_name,
+                    'sort_order' => ((int) $round->candidates()->max('sort_order')) + 1,
+                ],
+            );
+            $this->reorderDraftCandidates($round);
+        });
+    }
+
+    public function updateCandidateInLatestDraft(ElectionCandidate $candidate): void
+    {
+        DB::transaction(function () use ($candidate): void {
+            $round = $this->latestDraftRoundForUpdate($candidate->contest);
+            if ($round === null) {
+                return;
+            }
+
+            $updated = $round->candidates()
+                ->where('election_candidate_id', $candidate->id)
+                ->update(['first_name' => $candidate->first_name, 'last_name' => $candidate->last_name]);
+
+            if ($updated > 0) {
+                $this->reorderDraftCandidates($round);
+            }
+        });
+    }
+
+    public function removeCandidateFromLatestDraft(ElectionContest $contest, int $candidateId): void
+    {
+        DB::transaction(function () use ($candidateId, $contest): void {
+            $round = $this->latestDraftRoundForUpdate($contest);
+            if ($round === null) {
+                return;
+            }
+
+            $round->candidates()->where('election_candidate_id', $candidateId)->delete();
+            $this->reorderDraftCandidates($round);
+        });
+    }
+
+    private function latestDraftRoundForUpdate(ElectionContest $contest): ?ElectionRound
+    {
+        return $contest->rounds()
+            ->where('status', 'draft')
+            ->reorder()
+            ->orderByDesc('round_number')
+            ->lockForUpdate()
+            ->first();
+    }
+
+    private function reorderDraftCandidates(ElectionRound $round): void
+    {
+        $round->candidates()
+            ->reorder()
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->orderBy('id')
+            ->get()
+            ->each(fn (ElectionRoundCandidate $candidate, int $index) => $candidate->update(['sort_order' => $index + 1]));
+    }
+
     private function remainingSeatCount(ElectionRound $round): int
     {
         $electedBeforeRound = ElectionRoundCandidate::query()

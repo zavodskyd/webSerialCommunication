@@ -10,7 +10,11 @@
         </aside>
 
         <main class="rounded-3xl bg-white p-6 shadow-sm">
-            <div class="flex items-center justify-between gap-4">
+            <a href="{{ route('elections.edit', $voting) }}"
+                class="text-sm font-semibold text-sky-700 hover:text-sky-900">
+                ← Späť do editora
+            </a>
+            <div class="mt-2 flex items-center justify-between gap-4">
                 <h1 class="text-2xl font-semibold">{{ $contest->name }}</h1>
                 <span class="text-sm font-semibold {{ $serialConnected ? 'text-emerald-700' : 'text-rose-700' }}">
                     {{ $serialConnected ? 'Serial Agent pripojený' : 'Serial Agent nepripojený' }}

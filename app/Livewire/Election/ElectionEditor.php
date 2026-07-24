@@ -9,6 +9,7 @@ use App\Models\ElectionCandidate;
 use App\Models\ElectionContest;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
+use App\Services\ElectionRoundManager;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -123,7 +124,7 @@ class ElectionEditor extends Component
         session()->flash('status', 'Voľby boli uložené.');
     }
 
-    public function addCandidate(int $contestId): void
+    public function addCandidate(int $contestId, ElectionRoundManager $rounds): void
     {
         $contest = $this->findContest($contestId);
         $draft = $this->candidateDrafts[$contestId] ?? [];
@@ -141,10 +142,14 @@ class ElectionEditor extends Component
             ],
         )->validate();
 
-        $contest->candidates()->create([
-            ...$validated['candidate'],
-            'status' => 'approved',
-        ]);
+        DB::transaction(function () use ($contest, $rounds, $validated): void {
+            $candidate = $contest->candidates()->create([
+                ...$validated['candidate'],
+                'status' => 'approved',
+            ]);
+
+            $rounds->addCandidateToLatestDraft($candidate);
+        });
 
         $this->candidateDrafts[$contestId] = ['first_name' => '', 'last_name' => ''];
         $this->loadContests();
@@ -152,7 +157,7 @@ class ElectionEditor extends Component
         session()->flash('status', 'Kandidát bol pridaný do súťaže.');
     }
 
-    public function saveCandidate(int $candidateId): void
+    public function saveCandidate(int $candidateId, ElectionRoundManager $rounds): void
     {
         $candidate = $this->findCandidate($candidateId);
 
@@ -164,7 +169,10 @@ class ElectionEditor extends Component
                         'candidate.last_name' => ['required', 'string', 'max:255'],
                     ])->validate();
 
-                    $candidate->update($validated['candidate']);
+                    DB::transaction(function () use ($candidate, $rounds, $validated): void {
+                        $candidate->update($validated['candidate']);
+                        $rounds->updateCandidateInLatestDraft($candidate);
+                    });
                     $this->loadContests();
                     session()->flash('status', 'Kandidát bol uložený.');
 
@@ -176,14 +184,16 @@ class ElectionEditor extends Component
         abort(404);
     }
 
-    public function removeCandidate(int $candidateId): void
+    public function removeCandidate(int $candidateId, ElectionRoundManager $rounds): void
     {
-        $this->election->contests()
+        $contest = $this->election->contests()
             ->whereHas('candidates', fn ($query) => $query->whereKey($candidateId))
-            ->firstOrFail()
-            ->candidates()
-            ->whereKey($candidateId)
-            ->delete();
+            ->firstOrFail();
+
+        DB::transaction(function () use ($candidateId, $contest, $rounds): void {
+            $rounds->removeCandidateFromLatestDraft($contest, $candidateId);
+            $contest->candidates()->whereKey($candidateId)->delete();
+        });
 
         $this->loadContests();
         session()->flash('status', 'Kandidát bol odstránený.');

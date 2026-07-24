@@ -54,9 +54,9 @@ test('an active localized admission rejects a serial frame from outside its devi
 function activeAdmissionFixture(): array
 {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 9]);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'weight_one_device_count' => 9, 'quorum_participant_count' => 9]);
     $election->createDefaultContests();
-    $group = DeviceGroup::query()->create(['election_id' => $election->id, 'name' => 'Hliny', 'sort_order' => 1]);
+    $group = DeviceGroup::query()->create(['election_id' => $election->id, 'name' => 'Hliny', 'sort_order' => 1, 'quorum_participant_count' => 7]);
     $group->ranges()->create(['start_number' => 1, 'end_number' => 9]);
     $contest = $election->contests()->where('key', 'board-hliny')->firstOrFail();
     $admission = ElectionCandidateAdmission::query()->create([

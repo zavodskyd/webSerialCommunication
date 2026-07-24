@@ -146,7 +146,9 @@ class ElectionCandidateAdmissionManager
             }
             $votes = $admission->votes()->get();
             $yes = $votes->where('option_key', 'A')->sum('weight_snapshot');
-            $majorityThreshold = floor($admission->eligible_weight_total / 2) + 1;
+            $majorityBase = $admission->quorum_participant_count_snapshot
+                ?? $admission->eligible_weight_total;
+            $majorityThreshold = floor($majorityBase / 2) + 1;
             $accepted = $yes >= $majorityThreshold;
             $admission->update(['status' => $accepted ? 'accepted' : 'rejected', 'resolved_at' => now()]);
             if ($accepted) {
@@ -166,28 +168,32 @@ class ElectionCandidateAdmissionManager
 
     private function snapshotEligibleDeviceWeights(ElectionCandidateAdmission $admission): void
     {
-        $activeDeviceLimit = $admission->election->active_device_limit;
-        if (! $activeDeviceLimit) {
-            throw new \InvalidArgumentException('Pred spustením nastavte horný limit aktívnych zariadení.');
+        $quorumParticipantCount = $admission->device_group_id === null
+            ? $admission->election->quorum_participant_count
+            : $admission->deviceGroup?->quorum_participant_count;
+        if (($quorumParticipantCount ?? 0) < 1) {
+            throw new \InvalidArgumentException($admission->device_group_id === null
+                ? 'Pred spustením nastavte celkový počet účastníkov pre základ väčšiny.'
+                : 'Pre vybranú lokalitu nastavte počet účastníkov pre kvórum.');
         }
 
-        $eligibleAttendees = VotingAttendee::query()
+        $eligibleAttendeesQuery = VotingAttendee::query()
             ->where('voting_id', $admission->election->voting_id)
             ->where('is_present', true)
             ->where('can_vote', true)
-            ->where('weight', '>=', 1)
-            ->whereHas('device', function ($query) use ($activeDeviceLimit, $admission): void {
-                $query->whereRaw('CAST(device_number AS INTEGER) between 1 and ?', [$activeDeviceLimit]);
+            ->where('weight', '>=', 1);
 
-                if ($admission->deviceGroup) {
-                    $query->where(function ($query) use ($admission): void {
-                        foreach ($admission->deviceGroup->ranges as $range) {
-                            $query->orWhereRaw('CAST(device_number AS INTEGER) between ? and ?', [$range->start_number, $range->end_number]);
-                        }
-                    });
-                }
-            })
-            ->get(['device_id', 'weight']);
+        if ($admission->deviceGroup) {
+            $eligibleAttendeesQuery->whereHas('device', function ($query) use ($admission): void {
+                $query->where(function ($query) use ($admission): void {
+                    foreach ($admission->deviceGroup->ranges as $range) {
+                        $query->orWhereRaw('CAST(device_number AS INTEGER) between ? and ?', [$range->start_number, $range->end_number]);
+                    }
+                });
+            });
+        }
+
+        $eligibleAttendees = $eligibleAttendeesQuery->get(['device_id', 'weight']);
 
         $admission->eligibleDeviceWeights()->delete();
         $admission->eligibleDeviceWeights()->createMany($eligibleAttendees->map(
@@ -197,8 +203,8 @@ class ElectionCandidateAdmissionManager
             ],
         )->all());
         $admission->update([
-            'active_device_limit' => $activeDeviceLimit,
             'eligible_weight_total' => (float) $eligibleAttendees->sum('weight'),
+            'quorum_participant_count_snapshot' => $quorumParticipantCount,
         ]);
     }
 }

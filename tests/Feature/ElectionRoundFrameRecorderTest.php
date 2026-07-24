@@ -167,7 +167,7 @@ test('open election presentation remains alphabetical after candidates receive d
 
 test('later round results prepend candidates elected in prior rounds with yellow styling', function () {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 1]);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'weight_one_device_count' => 1, 'quorum_participant_count' => 1]);
     $election->createDefaultContests();
     $contest = $election->contests()->where('key', 'board-hliny')->firstOrFail();
     $winner = $contest->candidates()->create(['first_name' => 'Anna', 'last_name' => 'Adamová']);
@@ -214,7 +214,7 @@ test('later round results prepend candidates elected in prior rounds with yellow
 function activeRoundFixture(int $candidateCount = 1): array
 {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 1]);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'weight_one_device_count' => 1, 'quorum_participant_count' => 1]);
     $election->createDefaultContests();
     $contest = $election->contests()->where('key', 'chairperson')->firstOrFail();
     $contest->candidates()->create(['first_name' => 'Jana', 'last_name' => 'Nováková']);

@@ -45,7 +45,7 @@
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-2xl font-semibold text-slate-900">Aktívne zariadenia a váhy</h2>
-                    <p class="mt-1 text-sm text-slate-500">Do väčšiny sa rátajú zariadenia 1 až nastavený limit s váhou aspoň 1.</p>
+                    <p class="mt-1 text-sm text-slate-500">Váhy aspoň 1 určujú oprávnené zariadenia a silu ich hlasu. Počet zariadení nižšie slúži iba na hromadné predvyplnenie váhy 1.</p>
                 </div>
                 <div class="flex flex-wrap gap-3">
                     <button type="button" wire:click="exportDeviceWeights"
@@ -59,18 +59,28 @@
             </div>
 
             <form wire:submit="saveVotingWeights" class="mt-6 space-y-4">
-                <div class="flex flex-wrap items-end gap-4">
-                    <label class="grid max-w-xs gap-2 text-sm font-semibold text-slate-700">
-                        Aktívne zariadenia 1 až
-                        <input type="number" min="1" wire:model.blur="activeDeviceLimit" class="rounded-xl border-slate-300 px-3 py-2">
+                <div class="grid gap-4 lg:grid-cols-2">
+                    <div class="flex flex-wrap items-end gap-3 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                        <label class="grid min-w-64 flex-1 gap-2 text-sm font-semibold text-slate-700">
+                            Nastaviť váhu 1 prvým N zariadeniam
+                            <input type="number" min="1" wire:model.blur="weightOneDeviceCount" class="rounded-xl border-slate-300 px-3 py-2">
+                        </label>
+                        <button type="button" wire:click="fillActiveDeviceWeights" class="rounded-2xl border border-emerald-300 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800">
+                            Predvyplniť váhu 1
+                        </button>
+                        @error('weightOneDeviceCount')
+                            <p class="w-full text-sm text-rose-600">{{ $message }}</p>
+                        @enderror
+                    </div>
+                    <label class="grid gap-2 rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-950 ring-1 ring-emerald-200">
+                        Celkový počet účastníkov – základ väčšiny
+                        <input type="number" min="1" wire:model.blur="quorumParticipantCount" class="rounded-xl border-emerald-300 bg-white px-3 py-2 text-slate-900">
+                        <span class="text-xs font-normal text-emerald-800">Väčšina vo všetkých kolách a pri doplnení kandidáta do kontrolnej komisie sa počíta z tohto čísla.</span>
+                        @error('quorumParticipantCount')
+                            <span class="text-sm font-normal text-rose-600">{{ $message }}</span>
+                        @enderror
                     </label>
-                    <button type="button" wire:click="fillActiveDeviceWeights" class="rounded-2xl border border-emerald-300 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800">
-                        Vyplniť váhu 1
-                    </button>
                 </div>
-                @error('activeDeviceLimit')
-                    <p class="text-sm text-rose-600">{{ $message }}</p>
-                @enderror
                 <div class="max-h-80 overflow-auto rounded-[1.5rem] border border-slate-200">
                     <table class="w-full divide-y divide-slate-200">
                         <tbody>
@@ -85,7 +95,7 @@
                         </tbody>
                     </table>
                 </div>
-                <button type="submit" class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white">Uložiť limit a váhy</button>
+                <button type="submit" class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white">Uložiť základ väčšiny a váhy</button>
             </form>
 
             <form wire:submit="importDeviceWeights" class="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
@@ -102,6 +112,6 @@
             </form>
         </section>
 
-        <section class="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200/80"><div class="flex items-center justify-between"><div><h2 class="text-2xl font-semibold text-slate-900">Skupiny a rozsahy zariadení</h2><p class="mt-1 text-sm text-slate-500">Každá skupina má presne jeden rozsah.</p></div><button type="button" wire:click="addDeviceGroup" @disabled($this->availableGroupNames() === []) class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 disabled:opacity-50">Pridať skupinu</button></div><form wire:submit="saveDeviceGroups" class="mt-6 space-y-4">@foreach ($groupRows as $groupIndex => $group)<article wire:key="group-{{ $group['id'] ?? $groupIndex }}" class="grid gap-3 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 md:grid-cols-[1fr_1fr_1fr_auto]"><select wire:model="groupRows.{{ $groupIndex }}.name" class="rounded-xl border-slate-300 px-3 py-2"><option value="{{ $group['name'] }}">{{ $group['name'] }}</option>@foreach ($this->availableGroupNames() as $groupName)<option value="{{ $groupName }}">{{ $groupName }}</option>@endforeach</select><input type="number" min="1" wire:model.blur="groupRows.{{ $groupIndex }}.range.start_number" placeholder="Od zariadenia" class="rounded-xl border-slate-300 px-3 py-2"> <input type="number" min="1" wire:model.blur="groupRows.{{ $groupIndex }}.range.end_number" placeholder="Po zariadenie" class="rounded-xl border-slate-300 px-3 py-2"><button type="button" wire:click="removeDeviceGroup({{ $groupIndex }})" class="text-sm font-semibold text-rose-700">Odstrániť</button></article>@endforeach<div class="flex justify-end"><button type="submit" class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white">Uložiť skupiny</button></div></form></section>
+        <section class="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200/80"><div class="flex items-center justify-between"><div><h2 class="text-2xl font-semibold text-slate-900">Skupiny a rozsahy zariadení</h2><p class="mt-1 text-sm text-slate-500">Každá skupina má presne jeden rozsah.</p></div><button type="button" wire:click="addDeviceGroup" @disabled($this->availableGroupNames() === []) class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 disabled:opacity-50">Pridať skupinu</button></div><form wire:submit="saveDeviceGroups" class="mt-6 space-y-4">@foreach ($groupRows as $groupIndex => $group)<article wire:key="group-{{ $group['id'] ?? $groupIndex }}" class="grid gap-3 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 md:grid-cols-[1fr_1fr_1fr_1fr_auto]"><select wire:model="groupRows.{{ $groupIndex }}.name" class="rounded-xl border-slate-300 px-3 py-2"><option value="{{ $group['name'] }}">{{ $group['name'] }}</option>@foreach ($this->availableGroupNames() as $groupName)<option value="{{ $groupName }}">{{ $groupName }}</option>@endforeach</select><label class="flex flex-col gap-1 text-xs font-semibold text-slate-600"><span>Počet účastníkov pre kvórum</span><input type="number" min="1" wire:model.blur="groupRows.{{ $groupIndex }}.quorum_participant_count" placeholder="Počet účastníkov" class="rounded-xl border-slate-300 px-3 py-2 text-sm font-normal text-slate-900">@error("groupRows.{$groupIndex}.quorum_participant_count")<span class="font-normal text-rose-600">{{ $message }}</span>@enderror</label><input type="number" min="1" wire:model.blur="groupRows.{{ $groupIndex }}.range.start_number" placeholder="Od zariadenia" class="rounded-xl border-slate-300 px-3 py-2"> <input type="number" min="1" wire:model.blur="groupRows.{{ $groupIndex }}.range.end_number" placeholder="Po zariadenie" class="rounded-xl border-slate-300 px-3 py-2"><button type="button" wire:click="removeDeviceGroup({{ $groupIndex }})" class="text-sm font-semibold text-rose-700">Odstrániť</button></article>@endforeach<div class="flex justify-end"><button type="submit" class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white">Uložiť skupiny</button></div></form></section>
     </div>
 </div>

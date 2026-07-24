@@ -60,7 +60,7 @@ test('election exports reject standard votings', function () {
 function electionExportFixture(): array
 {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 1]);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'weight_one_device_count' => 1, 'quorum_participant_count' => 1]);
     $election->createDefaultContests();
     $contest = $election->contests()->where('key', 'chairperson')->firstOrFail();
     $contest->candidates()->create(['first_name' => 'Jana', 'last_name' => 'Nováková']);

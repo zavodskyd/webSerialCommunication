@@ -26,7 +26,7 @@ test('a round snapshots the current contest candidates and can be opened and clo
     expect($round->round_number)->toBe(1);
     expect($round->response_time_seconds)->toBe(45);
     expect($round->candidates()->pluck('last_name')->all())->toBe(['Nováková', 'Zelený']);
-    $election->update(['active_device_limit' => 100]);
+    $election->update(['quorum_participant_count' => 100]);
     expect($manager->open($round)->status)->toBe('live');
     expect($manager->close($round)->status)->toBe('closed');
 });
@@ -55,9 +55,9 @@ test('a round records one current weighted vote per device and candidate snapsho
     expect($manager->results($round)['accepted_device_count'])->toBe(1);
 });
 
-test('majority is calculated from the eligible device weight snapshot', function () {
+test('majority is calculated from the general participant count snapshot', function () {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'quorum_participant_count' => 100]);
     $election->createDefaultContests();
     $contest = $election->contests()->where('key', 'chairperson')->firstOrFail();
     $contest->candidates()->createMany([['first_name' => 'Anna', 'last_name' => 'A'], ['first_name' => 'Bea', 'last_name' => 'B']]);
@@ -70,7 +70,24 @@ test('majority is calculated from the eligible device weight snapshot', function
         ['election_round_candidate_id' => $round->candidates()->skip(1)->first()->id, 'device_id' => $secondDevice->id, 'weight_snapshot' => 100, 'voted_at' => now()],
     ]);
 
-    expect($manager->results($round)['majority_threshold'])->toBe(81.0);
+    $election->update(['quorum_participant_count' => 20]);
+
+    expect($round->quorum_participant_count_snapshot)->toBe(100);
+    expect($manager->results($round)['majority_threshold'])->toBe(51.0);
+});
+
+test('all election contest types use the general participant count', function () {
+    foreach (['chairperson', 'board-hliny', 'supervisory-committee'] as $contestKey) {
+        $voting = Voting::query()->create(['name' => 'Voľby '.$contestKey, 'voting_type' => 'election']);
+        $election = Election::query()->create(['voting_id' => $voting->id, 'quorum_participant_count' => 120]);
+        $election->createDefaultContests();
+        $contest = $election->contests()->where('key', $contestKey)->firstOrFail();
+        $contest->candidates()->create(['first_name' => 'Jana', 'last_name' => 'Nováková']);
+
+        $round = openElectionRound(app(ElectionRoundManager::class), $contest);
+
+        expect($round->quorum_participant_count_snapshot)->toBe(120);
+    }
 });
 
 test('a chairperson device keeps its first support and ignores a later candidate', function () {
@@ -212,7 +229,11 @@ test('a successor round includes candidates added after the preceding round', fu
 
 test('an opened round keeps individual device weights after global weight changes', function () {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 3]);
+    $election = Election::query()->create([
+        'voting_id' => $voting->id,
+        'weight_one_device_count' => 3,
+        'quorum_participant_count' => 100,
+    ]);
     $election->createDefaultContests();
     $contest = $election->contests()->where('key', 'chairperson')->firstOrFail();
     $contest->candidates()->create(['first_name' => 'Anna', 'last_name' => 'Adamová']);
@@ -229,10 +250,10 @@ test('an opened round keeps individual device weights after global weight change
 
     $manager->recordVote($round, $round->candidates()->firstOrFail(), $device);
 
-    expect($round->eligibleDeviceWeights()->pluck('weight_snapshot')->all())->toBe(['3.00']);
+    expect($round->eligibleDeviceWeights()->pluck('weight_snapshot')->all())->toBe(['3.00', '99.00']);
     expect($manager->results($round))->toMatchArray([
-        'total_weight' => 3.0,
-        'majority_threshold' => 2.0,
+        'total_weight' => 102.0,
+        'majority_threshold' => 51.0,
     ]);
     expect($round->votes()->value('weight_snapshot'))->toBe('3.00');
 });
@@ -253,8 +274,15 @@ function electionRoundDevice(string $number): Device
 
 function openElectionRound(ElectionRoundManager $manager, ElectionContest $contest): ElectionRound
 {
-    if ($contest->election->active_device_limit === null) {
-        $contest->election->update(['active_device_limit' => 999]);
+    if ($contest->election->quorum_participant_count === null) {
+        $eligibleWeight = VotingAttendee::query()
+            ->where('voting_id', $contest->election->voting_id)
+            ->where('is_present', true)
+            ->where('can_vote', true)
+            ->where('weight', '>=', 1)
+            ->sum('weight');
+
+        $contest->election->update(['quorum_participant_count' => max(1, (int) $eligibleWeight)]);
     }
 
     $round = $manager->create($contest);

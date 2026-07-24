@@ -13,6 +13,7 @@ class DeviceGroup extends Model
         'name',
         'sort_order',
         'is_active',
+        'quorum_participant_count',
     ];
 
     /**
@@ -23,6 +24,7 @@ class DeviceGroup extends Model
         return [
             'sort_order' => 'integer',
             'is_active' => 'boolean',
+            'quorum_participant_count' => 'integer',
         ];
     }
 

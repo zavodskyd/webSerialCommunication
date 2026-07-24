@@ -46,7 +46,9 @@ class ElectionEditor extends Component
 
     public bool $autoShowResults = true;
 
-    public ?int $activeDeviceLimit = null;
+    public ?int $weightOneDeviceCount = null;
+
+    public ?int $quorumParticipantCount = null;
 
     /** @var array<int, array{id: int, device_number: string, weight: string}> */
     public array $deviceWeightRows = [];
@@ -199,6 +201,7 @@ class ElectionEditor extends Component
             'id' => null,
             'name' => $this->availableGroupNames()[0],
             'is_active' => true,
+            'quorum_participant_count' => '',
             'range' => ['start_number' => '', 'end_number' => ''],
         ];
     }
@@ -218,12 +221,14 @@ class ElectionEditor extends Component
                 'groupRows.*.id' => ['nullable', 'integer'],
                 'groupRows.*.name' => ['required', 'string', 'max:255'],
                 'groupRows.*.is_active' => ['required', 'boolean'],
+                'groupRows.*.quorum_participant_count' => ['required', 'integer', 'min:1'],
                 'groupRows.*.range.start_number' => ['required', 'integer', 'min:1'],
                 'groupRows.*.range.end_number' => ['required', 'integer', 'min:1'],
             ],
             [],
             [
                 'groupRows.*.name' => 'názov skupiny',
+                'groupRows.*.quorum_participant_count' => 'počet účastníkov pre kvórum',
                 'groupRows.*.range.start_number' => 'začiatok rozsahu',
                 'groupRows.*.range.end_number' => 'koniec rozsahu',
             ],
@@ -243,6 +248,7 @@ class ElectionEditor extends Component
                         'name' => $groupRow['name'],
                         'sort_order' => $index + 1,
                         'is_active' => $groupRow['is_active'],
+                        'quorum_participant_count' => $groupRow['quorum_participant_count'],
                     ],
                 );
 
@@ -264,13 +270,17 @@ class ElectionEditor extends Component
     public function saveVotingWeights(): void
     {
         $validated = $this->validate([
-            'activeDeviceLimit' => ['required', 'integer', 'min:1', 'max:9999'],
+            'weightOneDeviceCount' => ['required', 'integer', 'min:1', 'max:9999'],
+            'quorumParticipantCount' => ['required', 'integer', 'min:1', 'max:999999'],
             'deviceWeightRows.*.id' => ['required', 'integer', 'exists:devices,id'],
             'deviceWeightRows.*.weight' => ['required', 'numeric', 'min:0', 'max:999999'],
         ]);
 
         DB::transaction(function () use ($validated): void {
-            $this->election->update(['active_device_limit' => $validated['activeDeviceLimit']]);
+            $this->election->update([
+                'weight_one_device_count' => $validated['weightOneDeviceCount'],
+                'quorum_participant_count' => $validated['quorumParticipantCount'],
+            ]);
 
             foreach ($validated['deviceWeightRows'] as $row) {
                 VotingAttendee::query()->updateOrCreate(
@@ -282,13 +292,13 @@ class ElectionEditor extends Component
 
         $this->election->refresh();
         $this->loadDeviceWeights();
-        session()->flash('status', 'Limit a váhy zariadení boli uložené.');
+        session()->flash('status', 'Základ väčšiny a váhy zariadení boli uložené.');
     }
 
     public function fillActiveDeviceWeights(): void
     {
-        $validated = $this->validate(['activeDeviceLimit' => ['required', 'integer', 'min:1', 'max:9999']]);
-        $limit = $validated['activeDeviceLimit'];
+        $validated = $this->validate(['weightOneDeviceCount' => ['required', 'integer', 'min:1', 'max:9999']]);
+        $limit = $validated['weightOneDeviceCount'];
 
         foreach ($this->deviceWeightRows as $index => $row) {
             $number = (int) ltrim($row['device_number'], '0');
@@ -297,7 +307,7 @@ class ElectionEditor extends Component
             }
         }
 
-        $this->election->update(['active_device_limit' => $limit]);
+        $this->election->update(['weight_one_device_count' => $limit]);
         session()->flash('status', 'Váha 1 bola vyplnená pre zariadenia 1 až '.$limit.'.');
     }
 
@@ -422,6 +432,7 @@ class ElectionEditor extends Component
                 'id' => $group->id,
                 'name' => $group->name,
                 'is_active' => $group->is_active,
+                'quorum_participant_count' => (string) $group->quorum_participant_count,
                 'range' => [
                     'start_number' => (string) $group->ranges->first()?->start_number,
                     'end_number' => (string) $group->ranges->first()?->end_number,
@@ -432,7 +443,8 @@ class ElectionEditor extends Component
 
     private function loadDeviceWeights(): void
     {
-        $this->activeDeviceLimit = $this->election->active_device_limit;
+        $this->weightOneDeviceCount = $this->election->weight_one_device_count;
+        $this->quorumParticipantCount = $this->election->quorum_participant_count;
         $weights = $this->voting->attendees()->pluck('weight', 'device_id');
         $this->deviceWeightRows = Device::query()->ordered()->get()->map(fn (Device $device): array => [
             'id' => $device->id,

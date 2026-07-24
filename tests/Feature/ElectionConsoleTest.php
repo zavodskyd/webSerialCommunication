@@ -23,7 +23,7 @@ test('the election console automatically selects the first candidate of a create
 
 test('the election console advances to the next candidate after stopping the current one', function () {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 1]);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'weight_one_device_count' => 1, 'quorum_participant_count' => 1]);
     $election->createDefaultContests();
     $contest = $election->contests()->firstOrFail();
     $contest->candidates()->createMany([

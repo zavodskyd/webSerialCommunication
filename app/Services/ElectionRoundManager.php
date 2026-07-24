@@ -43,16 +43,15 @@ class ElectionRoundManager
             if ($round->status !== 'draft') {
                 throw new \InvalidArgumentException('Kolo nie je pripravené na spustenie.');
             }
-            $activeDeviceLimit = $round->contest->election->active_device_limit;
-            if (! $activeDeviceLimit) {
-                throw new \InvalidArgumentException('Pred spustením nastavte horný limit aktívnych zariadení.');
+            $quorumParticipantCount = $round->contest->election->quorum_participant_count;
+            if (($quorumParticipantCount ?? 0) < 1) {
+                throw new \InvalidArgumentException('Pred spustením nastavte celkový počet účastníkov pre základ väčšiny.');
             }
             $eligibleAttendees = VotingAttendee::query()
                 ->where('voting_id', $round->contest->election->voting_id)
                 ->where('is_present', true)
                 ->where('can_vote', true)
                 ->where('weight', '>=', 1)
-                ->whereHas('device', fn ($query) => $query->whereRaw('CAST(device_number AS INTEGER) between 1 and ?', [$activeDeviceLimit]))
                 ->get(['device_id', 'weight']);
             $round->eligibleDeviceWeights()->createMany($eligibleAttendees->map(
                 fn (VotingAttendee $attendee): array => [
@@ -65,8 +64,8 @@ class ElectionRoundManager
                 'status' => 'live',
                 'opened_at' => now(),
                 'closed_at' => null,
-                'active_device_limit' => $activeDeviceLimit,
                 'eligible_weight_total' => $eligibleWeightTotal,
+                'quorum_participant_count_snapshot' => $quorumParticipantCount,
             ]);
 
             return $round->refresh();
@@ -160,7 +159,8 @@ class ElectionRoundManager
     {
         $round->loadMissing('candidates.votes');
         $totalWeight = (float) ($round->eligible_weight_total ?? 0);
-        $threshold = floor($totalWeight / 2) + 1;
+        $majorityBase = $round->quorum_participant_count_snapshot ?? $totalWeight;
+        $threshold = floor($majorityBase / 2) + 1;
         $eligible = $round->candidates
             ->map(fn ($candidate): array => [
                 'id' => $candidate->id,

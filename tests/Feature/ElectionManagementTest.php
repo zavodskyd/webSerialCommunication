@@ -87,10 +87,12 @@ test('user can manage direct candidates and non-overlapping device groups', func
         ->assertHasNoErrors()
         ->call('addDeviceGroup')
         ->set('groupRows.0.name', 'Hliny')
+        ->set('groupRows.0.quorum_participant_count', 120)
         ->set('groupRows.0.range.start_number', 1)
         ->set('groupRows.0.range.end_number', 20)
         ->call('addDeviceGroup')
         ->set('groupRows.1.name', 'Solinky')
+        ->set('groupRows.1.quorum_participant_count', 80)
         ->set('groupRows.1.range.start_number', 21)
         ->set('groupRows.1.range.end_number', 40)
         ->call('saveDeviceGroups')
@@ -99,6 +101,20 @@ test('user can manage direct candidates and non-overlapping device groups', func
     expect($contest->candidates()->firstOrFail()->only(['first_name', 'last_name', 'status']))
         ->toBe(['first_name' => 'Jana', 'last_name' => 'Nováková', 'status' => 'approved']);
     expect($election->deviceGroups()->count())->toBe(2);
+    expect($election->deviceGroups()->orderBy('sort_order')->pluck('quorum_participant_count')->all())->toBe([120, 80]);
+});
+
+test('device group requires a positive quorum participant count', function () {
+    $voting = createElectionVoting();
+
+    Livewire::test(ElectionEditor::class, ['voting' => $voting])
+        ->call('addDeviceGroup')
+        ->set('groupRows.0.name', 'Hliny')
+        ->set('groupRows.0.quorum_participant_count', 0)
+        ->set('groupRows.0.range.start_number', 1)
+        ->set('groupRows.0.range.end_number', 20)
+        ->call('saveDeviceGroups')
+        ->assertHasErrors(['groupRows.0.quorum_participant_count' => 'min']);
 });
 
 test('device group ranges may not overlap', function () {
@@ -107,14 +123,37 @@ test('device group ranges may not overlap', function () {
     Livewire::test(ElectionEditor::class, ['voting' => $voting])
         ->call('addDeviceGroup')
         ->set('groupRows.0.name', 'Hliny')
+        ->set('groupRows.0.quorum_participant_count', 120)
         ->set('groupRows.0.range.start_number', 1)
         ->set('groupRows.0.range.end_number', 20)
         ->call('addDeviceGroup')
         ->set('groupRows.1.name', 'Solinky')
+        ->set('groupRows.1.quorum_participant_count', 80)
         ->set('groupRows.1.range.start_number', 20)
         ->set('groupRows.1.range.end_number', 40)
         ->call('saveDeviceGroups')
         ->assertHasErrors('groupRows.1.range.start_number');
+});
+
+test('user can configure the general majority base separately from the weight helper', function () {
+    $voting = createElectionVoting();
+    createElectionDevice('001');
+    createElectionDevice('002');
+    createElectionDevice('003');
+
+    Livewire::test(ElectionEditor::class, ['voting' => $voting])
+        ->set('weightOneDeviceCount', 2)
+        ->set('quorumParticipantCount', 120)
+        ->call('fillActiveDeviceWeights')
+        ->assertSet('deviceWeightRows.0.weight', '1')
+        ->assertSet('deviceWeightRows.1.weight', '1')
+        ->assertSet('deviceWeightRows.2.weight', '0.00')
+        ->call('saveVotingWeights')
+        ->assertHasNoErrors();
+
+    expect($voting->election->refresh()->weight_one_device_count)->toBe(2)
+        ->and($voting->election->quorum_participant_count)->toBe(120)
+        ->and($voting->attendees()->orderBy('device_id')->pluck('weight')->all())->toBe(['1.00', '1.00', '0.00']);
 });
 
 test('user can export and import election device weights', function () {

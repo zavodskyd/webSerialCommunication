@@ -8,11 +8,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ElectionCandidateAdmission extends Model
 {
-    protected $fillable = ['election_id', 'election_contest_id', 'device_group_id', 'first_name', 'last_name', 'status', 'response_time_seconds', 'active_device_limit', 'eligible_weight_total', 'opened_at', 'closed_at', 'resolved_at', 'results_visible'];
+    protected $fillable = ['election_id', 'election_contest_id', 'device_group_id', 'first_name', 'last_name', 'status', 'response_time_seconds', 'active_device_limit', 'eligible_weight_total', 'quorum_participant_count_snapshot', 'opened_at', 'closed_at', 'resolved_at', 'results_visible'];
 
     protected function casts(): array
     {
-        return ['opened_at' => 'datetime', 'closed_at' => 'datetime', 'resolved_at' => 'datetime', 'eligible_weight_total' => 'float', 'results_visible' => 'boolean'];
+        return ['opened_at' => 'datetime', 'closed_at' => 'datetime', 'resolved_at' => 'datetime', 'eligible_weight_total' => 'float', 'quorum_participant_count_snapshot' => 'integer', 'results_visible' => 'boolean'];
     }
 
     public function election(): BelongsTo

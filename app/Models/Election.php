@@ -11,7 +11,8 @@ class Election extends Model
     protected $fillable = [
         'voting_id',
         'status',
-        'active_device_limit',
+        'weight_one_device_count',
+        'quorum_participant_count',
         'candidate_admissions_locked',
         'started_at',
         'finished_at',
@@ -23,6 +24,8 @@ class Election extends Model
     protected function casts(): array
     {
         return [
+            'weight_one_device_count' => 'integer',
+            'quorum_participant_count' => 'integer',
             'candidate_admissions_locked' => 'boolean',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',

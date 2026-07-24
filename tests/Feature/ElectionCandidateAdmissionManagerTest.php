@@ -35,9 +35,10 @@ test('the last valid admission vote replaces the prior device vote and accepted 
     expect($contest->candidates()->where('first_name', 'Jana')->where('last_name', 'Nováková')->exists())->toBeTrue();
 });
 
-test('candidate admission snapshots the eligible group weights and resolves against their majority', function () {
+test('local candidate admission uses the participant quorum snapshot with weighted yes votes', function () {
     [$election, $contest, $group] = admissionFixture();
-    $election->update(['active_device_limit' => 2]);
+    $election->update(['weight_one_device_count' => 2]);
+    $group->update(['quorum_participant_count' => 9]);
     $firstDevice = admissionDevice('001', 4);
     $secondDevice = admissionDevice('002', 4);
     $admission = ElectionCandidateAdmission::query()->create([
@@ -52,22 +53,92 @@ test('candidate admission snapshots the eligible group weights and resolves agai
     $started = $manager->start($admission);
     $manager->recordVote($admission, $firstDevice, 'A');
     VotingAttendee::query()->where('device_id', $secondDevice->id)->update(['weight' => 100]);
+    $group->update(['quorum_participant_count' => 1]);
     $manager->stop($admission);
     $manager->showResults($admission);
 
-    expect($started->active_device_limit)->toBe(2);
     expect($started->eligible_weight_total)->toBe(8.0);
+    expect($started->quorum_participant_count_snapshot)->toBe(9);
     expect($started->eligibleDeviceWeights()->count())->toBe(2);
     expect($manager->resolve($admission)->status)->toBe('rejected');
+});
+
+test('local candidate admission requires a quorum count and restart refreshes its snapshot', function () {
+    [$election, $contest, $group] = admissionFixture();
+    $group->update(['quorum_participant_count' => null]);
+    $admission = ElectionCandidateAdmission::query()->create([
+        'election_id' => $election->id,
+        'election_contest_id' => $contest->id,
+        'device_group_id' => $group->id,
+        'first_name' => 'Jana',
+        'last_name' => 'Nováková',
+    ]);
+    $manager = app(ElectionCandidateAdmissionManager::class);
+
+    expect(fn () => $manager->start($admission))
+        ->toThrow(InvalidArgumentException::class, 'Pre vybranú lokalitu nastavte počet účastníkov pre kvórum.');
+
+    $group->update(['quorum_participant_count' => 7]);
+    expect($manager->start($admission)->quorum_participant_count_snapshot)->toBe(7);
+
+    $manager->stop($admission);
+    $group->update(['quorum_participant_count' => 11]);
+
+    expect($manager->restart($admission)->quorum_participant_count_snapshot)->toBe(11);
+});
+
+test('supervisory committee candidate admission uses the general participant count snapshot', function () {
+    [$election] = admissionFixture();
+    $contest = $election->contests()->where('key', 'supervisory-committee')->firstOrFail();
+    $firstDevice = admissionDevice('001', 4);
+    admissionDevice('002', 4);
+    $admission = ElectionCandidateAdmission::query()->create([
+        'election_id' => $election->id,
+        'election_contest_id' => $contest->id,
+        'device_group_id' => null,
+        'first_name' => 'Jana',
+        'last_name' => 'Nováková',
+    ]);
+    $manager = app(ElectionCandidateAdmissionManager::class);
+
+    $started = $manager->start($admission);
+    $manager->recordVote($admission, $firstDevice, 'A');
+    $election->update(['quorum_participant_count' => 1]);
+    $manager->stop($admission);
+    $manager->showResults($admission);
+
+    expect($started->eligible_weight_total)->toBe(8.0)
+        ->and($started->quorum_participant_count_snapshot)->toBe(9)
+        ->and($manager->resolve($admission)->status)->toBe('rejected');
+});
+
+test('supervisory committee candidate admission requires the general participant count', function () {
+    [$election] = admissionFixture();
+    $election->update(['quorum_participant_count' => null]);
+    $contest = $election->contests()->where('key', 'supervisory-committee')->firstOrFail();
+    $admission = ElectionCandidateAdmission::query()->create([
+        'election_id' => $election->id,
+        'election_contest_id' => $contest->id,
+        'device_group_id' => null,
+        'first_name' => 'Jana',
+        'last_name' => 'Nováková',
+    ]);
+
+    expect(fn () => app(ElectionCandidateAdmissionManager::class)->start($admission))
+        ->toThrow(InvalidArgumentException::class, 'Pred spustením nastavte celkový počet účastníkov pre základ väčšiny.');
 });
 
 function admissionFixture(): array
 {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
-    $election = Election::query()->create(['voting_id' => $voting->id, 'active_device_limit' => 9]);
+    $election = Election::query()->create([
+        'voting_id' => $voting->id,
+        'weight_one_device_count' => 9,
+        'quorum_participant_count' => 9,
+    ]);
     $election->createDefaultContests();
     $contest = $election->contests()->where('key', 'board-hliny')->firstOrFail();
-    $group = DeviceGroup::query()->create(['election_id' => $election->id, 'name' => 'Hliny', 'sort_order' => 1]);
+    $group = DeviceGroup::query()->create(['election_id' => $election->id, 'name' => 'Hliny', 'sort_order' => 1, 'quorum_participant_count' => 7]);
     $group->ranges()->create(['start_number' => 1, 'end_number' => 9]);
 
     return [$election, $contest, $group];

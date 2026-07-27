@@ -95,9 +95,21 @@ class VotingIndex extends Component
     {
         Voting::query()
             ->whereKey($votingId)
+            ->where('voting_type', 'standard')
             ->whereNull('archived_at')
             ->update([
                 'archived_at' => now(),
+            ]);
+    }
+
+    public function activateVoting(int $votingId): void
+    {
+        Voting::query()
+            ->whereKey($votingId)
+            ->where('voting_type', 'standard')
+            ->whereNotNull('archived_at')
+            ->update([
+                'archived_at' => null,
             ]);
     }
 

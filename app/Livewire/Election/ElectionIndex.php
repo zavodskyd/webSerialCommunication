@@ -52,6 +52,15 @@ class ElectionIndex extends Component
             ->update(['archived_at' => now()]);
     }
 
+    public function activateElection(int $votingId): void
+    {
+        Voting::query()
+            ->whereKey($votingId)
+            ->where('voting_type', 'election')
+            ->whereNotNull('archived_at')
+            ->update(['archived_at' => null]);
+    }
+
     public function render(): View
     {
         $votings = Voting::query()

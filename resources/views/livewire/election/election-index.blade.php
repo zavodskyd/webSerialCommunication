@@ -75,6 +75,9 @@
                             @if (!$voting->archived_at)
                                 <button type="button" wire:click="archiveElection({{ $voting->id }})"
                                     class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100">Archivovať</button>
+                            @else
+                                <button type="button" wire:click="activateElection({{ $voting->id }})"
+                                    class="rounded-2xl border border-lime-200 bg-lime-50 px-4 py-3 text-sm font-semibold text-lime-800 transition hover:bg-lime-100">Aktivovať</button>
                             @endif
                         </div>
                     </article>

@@ -73,6 +73,39 @@ test('election management shows exports only after a round is closed', function 
         ->assertDontSeeHtml('aria-disabled="true"');
 });
 
+test('user can archive and activate election from the index', function () {
+    $voting = createElectionVoting();
+    $voting->update(['name' => 'Voľby na archiváciu']);
+
+    Livewire::test(ElectionIndex::class)
+        ->assertSee('Voľby na archiváciu')
+        ->assertSee('Archivovať')
+        ->call('archiveElection', $voting->id)
+        ->assertDontSee('Voľby na archiváciu')
+        ->call('toggleShowAll')
+        ->assertSee('Voľby na archiváciu')
+        ->assertSee('Archivované')
+        ->assertSee('Aktivovať')
+        ->call('activateElection', $voting->id)
+        ->assertSee('Voľby na archiváciu')
+        ->assertDontSee('Archivované')
+        ->assertSee('Archivovať');
+
+    expect($voting->fresh()->archived_at)->toBeNull();
+});
+
+test('election activation does not change an archived standard voting', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Archivované hlasovanie',
+        'archived_at' => now(),
+    ]);
+
+    Livewire::test(ElectionIndex::class)
+        ->call('activateElection', $voting->id);
+
+    expect($voting->fresh()->archived_at)->not->toBeNull();
+});
+
 test('standard voting list excludes elections', function () {
     Voting::query()->create(['name' => 'Štandardné hlasovanie']);
     createElectionVoting();

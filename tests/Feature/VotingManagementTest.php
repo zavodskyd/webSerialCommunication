@@ -155,20 +155,39 @@ test('archived votings are hidden by default and shown only after enabling all f
         ->assertSee('Archivované hlasovanie');
 });
 
-test('user can archive voting from the index', function () {
+test('user can archive and activate voting from the index', function () {
     $voting = Voting::query()->create([
         'name' => 'Hlasovanie na archiváciu',
     ]);
 
     Livewire::test(VotingIndex::class)
         ->assertSee('Hlasovanie na archiváciu')
+        ->assertSee('Archivovať')
         ->call('archiveVoting', $voting->id)
         ->assertDontSee('Hlasovanie na archiváciu')
         ->call('toggleShowAll')
         ->assertSee('Hlasovanie na archiváciu')
-        ->assertSee('Archivované');
+        ->assertSee('Archivované')
+        ->assertSee('Aktivovať')
+        ->call('activateVoting', $voting->id)
+        ->assertSee('Hlasovanie na archiváciu')
+        ->assertDontSee('Archivované')
+        ->assertSee('Archivovať');
 
-    expect($voting->fresh()->archived_at)->not->toBeNull();
+    expect($voting->fresh()->archived_at)->toBeNull();
+});
+
+test('voting activation does not change an archived election', function () {
+    $election = Voting::query()->create([
+        'name' => 'Archivované voľby',
+        'voting_type' => 'election',
+        'archived_at' => now(),
+    ]);
+
+    Livewire::test(VotingIndex::class)
+        ->call('activateVoting', $election->id);
+
+    expect($election->fresh()->archived_at)->not->toBeNull();
 });
 
 test('user can update voting details and generate questions', function () {

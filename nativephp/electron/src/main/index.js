@@ -331,7 +331,7 @@ const showNativeStartupSplash = () => {
         minimizable: false,
         maximizable: false,
         fullscreenable: false,
-        title: 'Serial Communication štart',
+        title: 'Hlasovanie – štart',
         backgroundColor: '#f8fafc',
         webPreferences: {
             contextIsolation: false,

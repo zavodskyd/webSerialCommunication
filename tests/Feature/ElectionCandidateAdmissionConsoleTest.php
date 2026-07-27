@@ -14,6 +14,9 @@ test('user can open a localized candidate admission', function () {
     $group = $election->deviceGroups()->create(['name' => 'Hliny', 'sort_order' => 1]);
 
     Livewire::test(ElectionCandidateAdmissionConsole::class, ['voting' => $voting])
+        ->assertSee('Otvoriť prezentačné okno')
+        ->assertSeeHtml('href="'.route('votings.presentation', $voting).'"')
+        ->assertSeeHtml('target="_blank"')
         ->set('firstName', 'Jana')->set('lastName', 'Nováková')
         ->set('deviceGroupId', $group->id)
         ->call('createAndOpenAdmission')

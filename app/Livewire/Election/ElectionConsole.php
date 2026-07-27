@@ -61,7 +61,10 @@ class ElectionConsole extends Component
 
     public function createRound(ElectionRoundManager $rounds, PresentationRuntimeManager $runtime): void
     {
-        $round = $rounds->create($this->contest());
+        $round = $rounds->create(
+            $this->contest(),
+            $this->voting->default_response_time_seconds ?? 30,
+        );
 
         $this->roundId = $round->id;
         $this->selectFirstCandidate($round);

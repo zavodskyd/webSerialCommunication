@@ -12,7 +12,10 @@ test('the election console links back to its editor', function () {
 
     Livewire::test(ElectionConsole::class, ['voting' => $voting])
         ->assertSee('Späť do editora')
-        ->assertSeeHtml('href="'.route('elections.edit', $voting).'"');
+        ->assertSee('Otvoriť prezentačné okno')
+        ->assertSeeHtml('href="'.route('elections.edit', $voting).'"')
+        ->assertSeeHtml('href="'.route('votings.presentation', $voting).'"')
+        ->assertSeeHtml('target="_blank"');
 });
 
 test('the election console automatically selects the first candidate of a created round', function () {
@@ -29,6 +32,24 @@ test('the election console automatically selects the first candidate of a create
         ->call('createRound')
         ->assertSet('candidateId', fn (?int $candidateId): bool => $candidateId === $contest->rounds()->firstOrFail()->candidates()->orderBy('sort_order')->value('id'))
         ->assertSet('remainingSeconds', 30);
+});
+
+test('the election console uses the configured response time for a created round', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Voľby',
+        'voting_type' => 'election',
+        'default_response_time_seconds' => 10,
+    ]);
+    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->firstOrFail();
+    $contest->candidates()->create(['first_name' => 'Anna', 'last_name' => 'Adamová']);
+
+    Livewire::test(ElectionConsole::class, ['voting' => $voting])
+        ->call('createRound')
+        ->assertSet('remainingSeconds', 10);
+
+    expect($contest->rounds()->firstOrFail()->response_time_seconds)->toBe(10);
 });
 
 test('the election console advances to the next candidate after stopping the current one', function () {

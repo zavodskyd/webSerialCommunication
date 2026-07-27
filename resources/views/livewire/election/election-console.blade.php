@@ -14,11 +14,17 @@
                 class="text-sm font-semibold text-sky-700 hover:text-sky-900">
                 ← Späť do editora
             </a>
-            <div class="mt-2 flex items-center justify-between gap-4">
+            <div class="mt-2 flex flex-wrap items-center justify-between gap-4">
                 <h1 class="text-2xl font-semibold">{{ $contest->name }}</h1>
-                <span class="text-sm font-semibold {{ $serialConnected ? 'text-emerald-700' : 'text-rose-700' }}">
-                    {{ $serialConnected ? 'Serial Agent pripojený' : 'Serial Agent nepripojený' }}
-                </span>
+                <div class="flex flex-wrap items-center gap-3">
+                    <span class="text-sm font-semibold {{ $serialConnected ? 'text-emerald-700' : 'text-rose-700' }}">
+                        {{ $serialConnected ? 'Serial Agent pripojený' : 'Serial Agent nepripojený' }}
+                    </span>
+                    <a href="{{ route('votings.presentation', $voting) }}" target="_blank" rel="noopener"
+                        class="inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700">
+                        Otvoriť prezentačné okno
+                    </a>
+                </div>
             </div>
 
             @if (session('status'))

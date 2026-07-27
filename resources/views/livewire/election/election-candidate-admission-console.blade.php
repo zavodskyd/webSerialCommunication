@@ -1,6 +1,12 @@
 <div wire:poll.2s="liveTick" class="min-h-screen bg-slate-100">
     <div class="mx-auto max-w-[96rem] space-y-6 px-4 py-8">
-        <a href="{{ route('elections.edit', $voting) }}" wire:navigate class="text-sm font-semibold text-emerald-700">← Späť na voľby</a>
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <a href="{{ route('elections.edit', $voting) }}" wire:navigate class="text-sm font-semibold text-emerald-700">← Späť na voľby</a>
+            <a href="{{ route('votings.presentation', $voting) }}" target="_blank" rel="noopener"
+                class="inline-flex items-center justify-center rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700">
+                Otvoriť prezentačné okno
+            </a>
+        </div>
 
         <div class="grid gap-6 lg:grid-cols-2">
             <div class="space-y-6">

@@ -95,7 +95,15 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Restore cached serial-agent executable
+        id: serial-agent-binary-cache
+        uses: actions/cache@v5
+        with:
+          path: extras/serial-agent/serial-agent.exe
+          key: windows-serial-agent-x64-msvc-v1-${{ hashFiles('serial-agent/**') }}
+
       - name: Setup Rust
+        if: ${{ steps.serial-agent-binary-cache.outputs.cache-hit != 'true' }}
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -114,6 +122,7 @@ jobs:
             ${{ runner.os }}-php-8.3-composer-
 
       - name: Cache Cargo
+        if: ${{ steps.serial-agent-binary-cache.outputs.cache-hit != 'true' }}
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -178,16 +187,36 @@ jobs:
           }
 
       - name: Test Rust agent
+        if: ${{ steps.serial-agent-binary-cache.outputs.cache-hit != 'true' }}
         run: cargo test --manifest-path serial-agent/Cargo.toml --locked
 
       - name: Build Win64 executable
+        if: ${{ steps.serial-agent-binary-cache.outputs.cache-hit != 'true' }}
         run: cargo build --manifest-path serial-agent/Cargo.toml --release --target x86_64-pc-windows-msvc --locked
 
       - name: Stage executable for NativePHP extras
+        if: ${{ steps.serial-agent-binary-cache.outputs.cache-hit != 'true' }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force extras/serial-agent
           Copy-Item serial-agent/target/x86_64-pc-windows-msvc/release/serial-agent.exe extras/serial-agent/serial-agent.exe
+
+      - name: Verify staged serial-agent executable
+        shell: pwsh
+        run: |
+          $agentPath = 'extras/serial-agent/serial-agent.exe'
+          if (-not (Test-Path $agentPath -PathType Leaf)) {
+            Write-Error "Missing staged serial agent at $agentPath"
+            exit 1
+          }
+
+          $agent = Get-Item $agentPath
+          if ($agent.Length -eq 0) {
+            Write-Error "Staged serial agent is empty: $agentPath"
+            exit 1
+          }
+
+          Write-Host "Using $agentPath ($($agent.Length) bytes); cache hit: ${{ steps.serial-agent-binary-cache.outputs.cache-hit }}"
 
       - name: Build frontend assets
         run: npm run build

@@ -48,70 +48,73 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    const exportButtons = document.querySelectorAll('[data-backup-export-url]');
+    document.addEventListener('click', async (event) => {
+        if (! (event.target instanceof Element)) {
+            return;
+        }
 
-    if (exportButtons.length === 0) {
-        return;
-    }
+        const button = event.target.closest('[data-backup-export-url]');
 
-    for (const button of exportButtons) {
-        button.addEventListener('click', async () => {
-            const exportUrl = button.getAttribute('data-backup-export-url');
-            const nativeRunning = button.getAttribute('data-native-running') === 'true';
+        if (! (button instanceof HTMLButtonElement)) {
+            return;
+        }
 
-            if (! exportUrl) {
+        const exportUrl = button.getAttribute('data-backup-export-url');
+        const nativeRunning = button.getAttribute('data-native-running') === 'true';
+
+        if (! exportUrl) {
+            return;
+        }
+
+        if (! nativeRunning) {
+            window.location.assign(exportUrl);
+
+            return;
+        }
+
+        if (! window.axios) {
+            window.alert(button.getAttribute('data-export-unavailable-message') ?? 'Native export zálohy nie je momentálne dostupný.');
+
+            return;
+        }
+
+        const originalContent = button.innerHTML;
+        const originalLabel = button.textContent?.trim() ?? '';
+        const exportingLabel = button.getAttribute('data-exporting-label') ?? originalLabel;
+
+        button.disabled = true;
+        button.textContent = exportingLabel;
+        button.setAttribute('aria-busy', 'true');
+
+        try {
+            const response = await window.axios.get(exportUrl, {
+                headers: {
+                    Accept: 'application/json',
+                },
+            });
+
+            if (response.data?.cancelled) {
                 return;
             }
 
-            if (! nativeRunning) {
-                window.location.assign(exportUrl);
+            if (typeof response.data?.path === 'string' && response.data.path !== '') {
+                const savedMessage = button.getAttribute('data-export-saved-message') ?? 'Záloha bola uložená do:';
+                window.alert(`${savedMessage}\n${response.data.path}`);
 
                 return;
             }
 
-            if (! window.axios) {
-                window.alert(button.getAttribute('data-export-unavailable-message') ?? 'Native export zálohy nie je momentálne dostupný.');
+            window.alert(button.getAttribute('data-export-empty-message') ?? 'Export zálohy skončil bez potvrdenej cieľovej cesty.');
+        } catch (error) {
+            const message = error?.response?.data?.message
+                ?? button.getAttribute('data-export-error-message')
+                ?? 'Export zálohy zlyhal.';
 
-                return;
-            }
-
-            const originalLabel = button.textContent?.trim() ?? '';
-            const exportingLabel = button.getAttribute('data-exporting-label') ?? originalLabel;
-
-            button.disabled = true;
-            button.textContent = exportingLabel;
-            button.setAttribute('aria-busy', 'true');
-
-            try {
-                const response = await window.axios.get(exportUrl, {
-                    headers: {
-                        Accept: 'application/json',
-                    },
-                });
-
-                if (response.data?.cancelled) {
-                    return;
-                }
-
-                if (typeof response.data?.path === 'string' && response.data.path !== '') {
-                    const savedMessage = button.getAttribute('data-export-saved-message') ?? 'Záloha bola uložená do:';
-                    window.alert(`${savedMessage}\n${response.data.path}`);
-
-                    return;
-                }
-
-                window.alert(button.getAttribute('data-export-empty-message') ?? 'Export zálohy skončil bez potvrdenej cieľovej cesty.');
-            } catch (error) {
-                const message = error?.response?.data?.message
-                    ?? button.getAttribute('data-export-error-message')
-                    ?? 'Export zálohy zlyhal.';
-
-                window.alert(message);
-            } finally {
-                button.disabled = false;
-                button.textContent = originalLabel;
-                button.setAttribute('aria-busy', 'false');
-            }
-        });
-    }
+            window.alert(message);
+        } finally {
+            button.disabled = false;
+            button.innerHTML = originalContent;
+            button.setAttribute('aria-busy', 'false');
+        }
+    });
 });

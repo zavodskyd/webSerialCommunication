@@ -130,7 +130,7 @@
                             </div>
 
                             <div class="flex flex-wrap gap-3">
-                                <div x-data="{ open: false }" class="relative" x-on:keydown.escape.window="open = false">
+                                <div x-data="{ open: false }" x-on:click.outside="open = false" x-on:keydown.escape.window="open = false" class="relative">
                                     <button
                                         type="button"
                                         x-on:click="open = ! open"
@@ -151,7 +151,6 @@
                                     @if ($closedRoundCount > 0)
                                         <template x-if="open">
                                             <div
-                                                x-on:click.outside="open = false"
                                                 class="absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10"
                                                 role="menu"
                                             >
@@ -168,7 +167,7 @@
                                     @endif
                                 </div>
 
-                                <div x-data="{ open: false }" class="relative" x-on:keydown.escape.window="open = false">
+                                <div x-data="{ open: false }" x-on:click.outside="open = false" x-on:keydown.escape.window="open = false" class="relative">
                                     <button
                                         type="button"
                                         x-on:click="open = ! open"
@@ -182,7 +181,6 @@
 
                                     <template x-if="open">
                                         <div
-                                            x-on:click.outside="open = false"
                                             class="absolute right-0 z-30 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10"
                                             role="menu"
                                         >

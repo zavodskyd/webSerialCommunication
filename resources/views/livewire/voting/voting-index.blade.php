@@ -32,7 +32,7 @@
                     <form method="POST" action="{{ route('votings.configuration.import-new') }}" enctype="multipart/form-data">
                         @csrf
                         <label tabindex="0" x-on:keydown.enter="$el.click()" class="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2">
-                            <x-ui.icon name="upload" class="h-5 w-5" />
+                            <x-ui.icon name="import" class="h-5 w-5" />
                             Importovať hlasovanie
                             <input type="file" name="configuration_file" accept="application/json,.json" required class="sr-only" x-on:change="$el.form.requestSubmit()">
                         </label>
@@ -107,11 +107,11 @@
                                     <template x-if="open">
                                         <div role="menu" class="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10">
                                             <a role="menuitem" href="{{ route('votings.exports.results', $voting) }}" target="_blank" rel="noopener" class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-800">
-                                                <x-ui.icon name="download" class="h-5 w-5 text-emerald-600" />
+                                                <x-ui.icon name="export" class="h-5 w-5 text-emerald-600" />
                                                 Export výsledkov
                                             </a>
                                             <a role="menuitem" href="{{ route('votings.exports.pressed-options', $voting) }}" target="_blank" rel="noopener" class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-sky-50 hover:text-sky-800">
-                                                <x-ui.icon name="download" class="h-5 w-5 text-sky-600" />
+                                                <x-ui.icon name="export" class="h-5 w-5 text-sky-600" />
                                                 Export stlačených možností
                                             </a>
                                         </div>
@@ -131,13 +131,13 @@
                                             Kopírovať
                                         </button>
                                         <button type="button" role="menuitem" data-backup-export-url="{{ route('votings.configuration.export', $voting) }}" data-native-running="{{ config('nativephp-internal.running') ? 'true' : 'false' }}" data-exporting-label="Exportujem konfiguráciu…" data-export-saved-message="Konfigurácia bola uložená do:" data-export-unavailable-message="Native export konfigurácie nie je momentálne dostupný." data-export-empty-message="Export konfigurácie skončil bez potvrdenej cieľovej cesty." data-export-error-message="Export konfigurácie zlyhal." class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-800 disabled:cursor-wait disabled:opacity-70">
-                                            <x-ui.icon name="download" class="h-5 w-5 text-violet-600" />
+                                            <x-ui.icon name="export" class="h-5 w-5 text-violet-600" />
                                             Exportovať konfiguráciu
                                         </button>
                                         <form method="POST" action="{{ route('votings.configuration.import', $voting) }}" enctype="multipart/form-data" data-confirm-message="Import nahradí celú konfiguráciu a prevádzkové údaje tohto hlasovania. Názov zostane zachovaný. Pokračovať?">
                                             @csrf
                                             <label role="menuitem" tabindex="0" x-on:keydown.enter="$el.click()" class="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-teal-50 hover:text-teal-800 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-teal-500">
-                                                <x-ui.icon name="upload" class="h-5 w-5 text-teal-600" />
+                                                <x-ui.icon name="import" class="h-5 w-5 text-teal-600" />
                                                 Importovať konfiguráciu
                                                 <input type="file" name="configuration_file" accept="application/json,.json" required class="sr-only" x-on:change="$el.form.requestSubmit()">
                                             </label>

@@ -9,6 +9,7 @@
     {{ $attributes->merge(['class' => 'h-4 w-4 shrink-0']) }}
 >
     @switch($name)
+        @case('export')
         @case('upload')
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M7.5 8.25 12 3.75m0 0 4.5 4.5M12 3.75V15" />
             @break
@@ -36,6 +37,7 @@
         @case('activate')
             <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356m-.97 5.962A9 9 0 1 0 21 12.75" />
             @break
+        @case('import')
         @case('download')
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M7.5 11.25 12 15.75m0 0 4.5-4.5M12 15.75V3" />
             @break

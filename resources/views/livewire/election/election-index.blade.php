@@ -42,7 +42,7 @@
                     <form method="POST" action="{{ route('elections.configuration.import-new') }}" enctype="multipart/form-data">
                         @csrf
                         <label for="election-import-new" class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-100 focus-within:ring-2 focus-within:ring-cyan-500 focus-within:ring-offset-2">
-                            <x-ui.icon name="upload" />
+                            <x-ui.icon name="import" />
                             Importovať voľby
                         </label>
                         <input
@@ -159,7 +159,7 @@
                                                     Export výsledkov
                                                 </a>
                                                 <a href="{{ route('elections.exports.audit', $voting) }}" target="_blank" rel="noopener" class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50" role="menuitem">
-                                                    <x-ui.icon name="download" />
+                                                    <x-ui.icon name="export" />
                                                     Export auditu
                                                 </a>
                                             </div>
@@ -196,7 +196,7 @@
                                                 class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-violet-700 transition hover:bg-violet-50 disabled:cursor-wait disabled:opacity-70"
                                                 role="menuitem"
                                             >
-                                                <x-ui.icon name="download" />
+                                                <x-ui.icon name="export" />
                                                 Exportovať konfiguráciu
                                             </button>
 
@@ -208,7 +208,7 @@
                                             >
                                                 @csrf
                                                 <label for="election-import-{{ $voting->id }}" class="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-teal-700 transition hover:bg-teal-50" role="menuitem">
-                                                    <x-ui.icon name="upload" />
+                                                    <x-ui.icon name="import" />
                                                     Importovať konfiguráciu
                                                 </label>
                                                 <input

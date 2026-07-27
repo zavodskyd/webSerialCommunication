@@ -5,7 +5,10 @@ namespace App\Providers;
 use App\Support\StartupCoordinator;
 use Illuminate\Support\Facades\Log;
 use Native\Desktop\Contracts\ProvidesPhpIni;
+use Native\Desktop\Facades\Alert;
+use Native\Desktop\Facades\App;
 use Native\Desktop\Facades\Window;
+use Throwable;
 
 class NativeAppServiceProvider implements ProvidesPhpIni
 {
@@ -28,7 +31,13 @@ class NativeAppServiceProvider implements ProvidesPhpIni
             'app_url' => config('app.url'),
         ]);
 
-        app(StartupCoordinator::class)->run();
+        try {
+            app(StartupCoordinator::class)->run();
+        } catch (Throwable $exception) {
+            $this->handleStartupFailure($exception);
+
+            return;
+        }
 
         Window::open()
             ->maximized();
@@ -41,5 +50,36 @@ class NativeAppServiceProvider implements ProvidesPhpIni
     {
         return [
         ];
+    }
+
+    private function handleStartupFailure(Throwable $exception): void
+    {
+        Log::critical('Native application startup failed', [
+            'exception' => $exception,
+            'message' => $exception->getMessage(),
+        ]);
+
+        try {
+            $selectedButton = Alert::new()
+                ->title('Aktualizáciu databázy sa nepodarilo dokončiť')
+                ->detail('Aplikácia nemôže bezpečne pokračovať. Podrobnosti sú uložené v aplikačnom logu.')
+                ->buttons(['Skúsiť znova', 'Ukončiť aplikáciu'])
+                ->defaultId(0)
+                ->cancelId(1)
+                ->show('Skontrolujte prístup k databáze a skúste aktualizáciu znova.');
+
+            if ($selectedButton === 0) {
+                App::relaunch();
+
+                return;
+            }
+        } catch (Throwable $alertException) {
+            Log::critical('Native startup recovery dialog failed', [
+                'exception' => $alertException,
+                'message' => $alertException->getMessage(),
+            ]);
+        }
+
+        App::quit();
     }
 }

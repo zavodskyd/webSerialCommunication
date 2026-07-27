@@ -123,6 +123,33 @@ test('migration failure state persists expected metadata after a successful back
         ->and($state['last_failed_message'])->toBe('migration exploded');
 });
 
+test('next startup retries failed migrations and marks the build ready only after success', function () {
+    app(NativeStartupState::class)->markSuccessful('2026.06.04-test');
+
+    $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
+    $bootstrapper->shouldReceive('hasDatabaseSchema')->twice()->andReturnTrue();
+    $bootstrapper->shouldReceive('backupBeforeMigrations')
+        ->twice()
+        ->with('2026.06.05-test')
+        ->andReturn('/tmp/pre-migration.sqlite');
+    $bootstrapper->shouldReceive('runPendingMigrations')
+        ->once()
+        ->ordered()
+        ->andThrow(new RuntimeException('migration exploded'));
+    $bootstrapper->shouldReceive('runPendingMigrations')
+        ->once()
+        ->ordered()
+        ->andReturnTrue();
+
+    expect(fn () => app(StartupCoordinator::class)->run())
+        ->toThrow(RuntimeException::class, 'migration exploded');
+    expect(app(NativeStartupState::class)->lastStartedVersion())->toBe('2026.06.04-test');
+
+    app(StartupCoordinator::class)->run();
+
+    expect(app(NativeStartupState::class)->lastStartedVersion())->toBe('2026.06.05-test');
+});
+
 test('native startup starts the rust serial agent and bridge when configured', function () {
     config([
         'serial.driver' => 'rust-agent',

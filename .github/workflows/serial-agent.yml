@@ -152,6 +152,17 @@ jobs:
 
           $envContent | Set-Content .env
 
+      - name: Verify fresh production database schema
+        shell: pwsh
+        run: |
+          $databasePath = Join-Path $env:RUNNER_TEMP 'nativephp-schema.sqlite'
+          New-Item -ItemType File -Force $databasePath | Out-Null
+          $env:DB_CONNECTION = 'sqlite'
+          $env:DB_DATABASE = $databasePath
+          php artisan migrate:fresh --force --no-interaction
+          php artisan db:seed --force --no-interaction
+          php artisan migrate:status --no-interaction
+
       - name: Verify resolved app version
         shell: pwsh
         run: |

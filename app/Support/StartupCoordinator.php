@@ -18,30 +18,35 @@ class StartupCoordinator
 
         $this->runStep('load-startup-state', fn (): array => $this->state->load());
 
-        $hasApplicationData = $this->runStep(
-            'ensure-database-present',
-            fn (): bool => $this->databaseBootstrapper->hasApplicationData()
+        $hasDatabaseSchema = $this->runStep(
+            'check-database-schema',
+            fn (): bool => $this->databaseBootstrapper->hasDatabaseSchema()
         );
 
-        $shouldRunMigrations = ! $hasApplicationData
+        $shouldRunMigrations = ! $hasDatabaseSchema
             || $this->state->lastStartedVersion() !== $version;
 
         if ($shouldRunMigrations) {
+            if ($hasDatabaseSchema) {
+                $this->runStep(
+                    'backup-database-before-migrations',
+                    fn (): ?string => $this->databaseBootstrapper->backupBeforeMigrations($version)
+                );
+            } else {
+                $this->logStep(
+                    'backup-database-before-migrations',
+                    'ok',
+                    'Skipped because the database schema does not exist yet.'
+                );
+            }
+
             $this->runStep(
                 'maybe-run-migrations',
                 fn (): bool => $this->databaseBootstrapper->runPendingMigrations()
             );
         } else {
+            $this->logStep('backup-database-before-migrations', 'ok', 'Skipped for unchanged build version.');
             $this->logStep('maybe-run-migrations', 'ok', 'Skipped for unchanged build version.');
-        }
-
-        if (! $hasApplicationData) {
-            $this->runStep(
-                'maybe-seed-initial-data',
-                fn (): bool => $this->databaseBootstrapper->seedFromBundledDatabaseIfEmpty()
-            );
-        } else {
-            $this->logStep('maybe-seed-initial-data', 'ok', 'Skipped because application data already exists.');
         }
 
         $this->runStep('start-rust-agent', fn (): bool => $this->startRustSerialAgent());

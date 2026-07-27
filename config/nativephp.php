@@ -91,12 +91,6 @@ return [
         '*/tests',
     ],
 
-    'cleanup_include_files' => [
-        'database/nativephp-seed.sqlite',
-    ],
-
-    'seed_database_path' => env('NATIVEPHP_SEED_DATABASE_PATH', database_path('nativephp-seed.sqlite')),
-
     /**
      * The NativePHP updater configuration.
      */
@@ -172,7 +166,6 @@ return [
      * Define your own scripts to run before and after the build process.
      */
     'prebuild' => [
-        'php artisan native:prepare-seed-database',
         'php artisan build:stamp-version',
     ],
 

@@ -20,6 +20,9 @@ yarn-error.log
 /.vscode
 /.zed
 /nativephp/dist
+/database/*.sqlite
+/database/*.sqlite-shm
+/database/*.sqlite-wal
 /extras/serial-agent/serial-agent.exe
 bootstrap/.DS_Store
 bootstrap/cache

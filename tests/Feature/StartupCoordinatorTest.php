@@ -30,11 +30,11 @@ afterEach(function () {
     @unlink(SerialAgentTokens::tokenPath());
 });
 
-test('first native boot runs migrations and seeds empty application data', function () {
+test('first native boot creates the schema without trying to back up an empty database', function () {
     $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
-    $bootstrapper->shouldReceive('hasApplicationData')->once()->andReturnFalse();
+    $bootstrapper->shouldReceive('hasDatabaseSchema')->once()->andReturnFalse();
+    $bootstrapper->shouldReceive('backupBeforeMigrations')->never();
     $bootstrapper->shouldReceive('runPendingMigrations')->once()->andReturnTrue();
-    $bootstrapper->shouldReceive('seedFromBundledDatabaseIfEmpty')->once()->andReturnTrue();
 
     app(StartupCoordinator::class)->run();
 
@@ -43,9 +43,9 @@ test('first native boot runs migrations and seeds empty application data', funct
 
 test('startup state records the last completed progress step', function () {
     $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
-    $bootstrapper->shouldReceive('hasApplicationData')->once()->andReturnFalse();
+    $bootstrapper->shouldReceive('hasDatabaseSchema')->once()->andReturnFalse();
+    $bootstrapper->shouldReceive('backupBeforeMigrations')->never();
     $bootstrapper->shouldReceive('runPendingMigrations')->once()->andReturnTrue();
-    $bootstrapper->shouldReceive('seedFromBundledDatabaseIfEmpty')->once()->andReturnTrue();
 
     app(StartupCoordinator::class)->run();
 
@@ -55,56 +55,72 @@ test('startup state records the last completed progress step', function () {
         ->and($state['current_status'])->toBe('ok');
 });
 
-test('unchanged build version skips migrations and seed when data exists', function () {
+test('unchanged build version skips backup and migrations', function () {
     app(NativeStartupState::class)->markSuccessful('2026.06.05-test');
 
     $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
-    $bootstrapper->shouldReceive('hasApplicationData')->once()->andReturnTrue();
+    $bootstrapper->shouldReceive('hasDatabaseSchema')->once()->andReturnTrue();
+    $bootstrapper->shouldReceive('backupBeforeMigrations')->never();
     $bootstrapper->shouldReceive('runPendingMigrations')->never();
-    $bootstrapper->shouldReceive('seedFromBundledDatabaseIfEmpty')->never();
 
     app(StartupCoordinator::class)->run();
 
     expect(app(NativeStartupState::class)->lastStartedVersion())->toBe('2026.06.05-test');
 });
 
-test('changed build version migrates existing data without seeding', function () {
+test('changed build version backs up existing data before migrations', function () {
     app(NativeStartupState::class)->markSuccessful('2026.06.04-test');
-    writeBuildVersion('2026.06.05-test');
 
     $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
-    $bootstrapper->shouldReceive('hasApplicationData')->once()->andReturnTrue();
+    $bootstrapper->shouldReceive('hasDatabaseSchema')->once()->andReturnTrue();
+    $bootstrapper->shouldReceive('backupBeforeMigrations')
+        ->once()
+        ->with('2026.06.05-test')
+        ->andReturn('/tmp/pre-migration.sqlite');
     $bootstrapper->shouldReceive('runPendingMigrations')->once()->andReturnTrue();
-    $bootstrapper->shouldReceive('seedFromBundledDatabaseIfEmpty')->never();
 
     app(StartupCoordinator::class)->run();
 
     expect(app(NativeStartupState::class)->lastStartedVersion())->toBe('2026.06.05-test');
 });
 
-test('migration failure state persists expected metadata', function () {
+test('backup failure prevents migrations and records the failed step', function () {
     app(NativeStartupState::class)->markSuccessful('2026.06.04-test');
-    writeBuildVersion('2026.06.05-test');
 
     $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
-    $bootstrapper->shouldReceive('hasApplicationData')->once()->andReturnTrue();
+    $bootstrapper->shouldReceive('hasDatabaseSchema')->once()->andReturnTrue();
+    $bootstrapper->shouldReceive('backupBeforeMigrations')
+        ->once()
+        ->andThrow(new RuntimeException('backup exploded'));
+    $bootstrapper->shouldReceive('runPendingMigrations')->never();
+
+    expect(fn () => app(StartupCoordinator::class)->run())
+        ->toThrow(RuntimeException::class, 'backup exploded');
+
+    $state = app(NativeStartupState::class)->load();
+
+    expect($state['last_started_version'])->toBe('2026.06.04-test')
+        ->and($state['last_failed_step'])->toBe('backup-database-before-migrations');
+});
+
+test('migration failure state persists expected metadata after a successful backup', function () {
+    app(NativeStartupState::class)->markSuccessful('2026.06.04-test');
+
+    $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
+    $bootstrapper->shouldReceive('hasDatabaseSchema')->once()->andReturnTrue();
+    $bootstrapper->shouldReceive('backupBeforeMigrations')->once()->andReturn('/tmp/pre-migration.sqlite');
     $bootstrapper->shouldReceive('runPendingMigrations')
         ->once()
         ->andThrow(new RuntimeException('migration exploded'));
 
-    try {
-        app(StartupCoordinator::class)->run();
-    } catch (RuntimeException) {
-        $state = app(NativeStartupState::class)->load();
+    expect(fn () => app(StartupCoordinator::class)->run())
+        ->toThrow(RuntimeException::class, 'migration exploded');
 
-        expect($state['last_started_version'])->toBe('2026.06.04-test')
-            ->and($state['last_failed_step'])->toBe('maybe-run-migrations')
-            ->and($state['last_failed_message'])->toBe('migration exploded');
+    $state = app(NativeStartupState::class)->load();
 
-        return;
-    }
-
-    $this->fail('Startup did not fail for a migration exception.');
+    expect($state['last_started_version'])->toBe('2026.06.04-test')
+        ->and($state['last_failed_step'])->toBe('maybe-run-migrations')
+        ->and($state['last_failed_message'])->toBe('migration exploded');
 });
 
 test('native startup starts the rust serial agent and bridge when configured', function () {
@@ -118,9 +134,9 @@ test('native startup starts the rust serial agent and bridge when configured', f
 
     $childProcesses = ChildProcess::fake();
     $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
-    $bootstrapper->shouldReceive('hasApplicationData')->once()->andReturnTrue();
+    $bootstrapper->shouldReceive('hasDatabaseSchema')->once()->andReturnFalse();
+    $bootstrapper->shouldReceive('backupBeforeMigrations')->never();
     $bootstrapper->shouldReceive('runPendingMigrations')->once()->andReturnTrue();
-    $bootstrapper->shouldReceive('seedFromBundledDatabaseIfEmpty')->never();
 
     app(StartupCoordinator::class)->run();
 
@@ -154,23 +170,17 @@ test('missing rust serial agent fails startup before marking ready', function ()
     ]);
 
     $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
-    $bootstrapper->shouldReceive('hasApplicationData')->once()->andReturnTrue();
+    $bootstrapper->shouldReceive('hasDatabaseSchema')->once()->andReturnFalse();
+    $bootstrapper->shouldReceive('backupBeforeMigrations')->never();
     $bootstrapper->shouldReceive('runPendingMigrations')->once()->andReturnTrue();
-    $bootstrapper->shouldReceive('seedFromBundledDatabaseIfEmpty')->never();
 
-    try {
-        app(StartupCoordinator::class)->run();
-    } catch (RuntimeException $exception) {
-        $state = app(NativeStartupState::class)->load();
+    expect(fn () => app(StartupCoordinator::class)->run())
+        ->toThrow(RuntimeException::class, 'Rust serial agent executable not found');
 
-        expect($exception->getMessage())->toContain('Rust serial agent executable not found')
-            ->and($state['last_started_version'] ?? null)->toBeNull()
-            ->and($state['last_failed_step'])->toBe('start-rust-agent');
+    $state = app(NativeStartupState::class)->load();
 
-        return;
-    }
-
-    $this->fail('Startup did not fail for missing rust serial agent.');
+    expect($state['last_started_version'] ?? null)->toBeNull()
+        ->and($state['last_failed_step'])->toBe('start-rust-agent');
 });
 
 function writeBuildVersion(string $version): void

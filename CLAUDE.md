@@ -13,7 +13,7 @@ The original `/dashboard` + Laravel Breeze auth scaffold has been **removed** (`
 ### Two execution modes
 
 1. **Web (browser)** — `php artisan serve` + `npm run dev`. Web Serial API works only in Chromium-based browsers.
-2. **Desktop (NativePHP/Electron)** — `composer native:dev` runs `php artisan native:run` and `npm run dev` concurrently. Desktop is the intended production target. `app/Providers/NativeAppServiceProvider.php` opens a maximized window on boot and seeds an empty SQLite from a bundled seed DB via `App\Support\NativeDatabaseBootstrapper`.
+2. **Desktop (NativePHP/Electron)** — `composer native:dev` runs `php artisan native:run` and `npm run dev` concurrently. Desktop is the intended production target. `app/Providers/NativeAppServiceProvider.php` opens a maximized window on boot. `App\Support\NativeDatabaseBootstrapper` creates a schema-only user database on first launch and backs up an existing SQLite database before version-triggered migrations.
 
 ### Voting domain (the main feature)
 
@@ -47,9 +47,9 @@ Received bytes → hex string → posted to a Livewire action (`SerialCommunicat
 - CSV → `DeviceController::import` (column order: `device_number, code_a..code_f, code_ruka`).
 - External SQLite from a legacy C# voting app → `DeviceController::loadExternalDb`. Reads table `SKDP_ParentZariadenie` columns `UniqueId, A_Code…F_Code, Ruka_Code`. Uses a runtime-injected DB connection named `external` and writes the file to `storage/app/private/temp/external.sqlite` — name is fixed, so concurrent uploads collide.
 
-### NativePHP seeding
+### NativePHP database lifecycle
 
-`PrepareNativeSeedDatabase` (artisan `native:prepare-seed-database`) runs as a `prebuild` hook (see `config/nativephp.php`) and copies the current dev SQLite to `database/nativephp-seed.sqlite`. On first launch in the bundled desktop app, `NativeDatabaseBootstrapper::seedFromBundledDatabaseIfEmpty()` ATTACH-copies tables from that seed into the user's empty local DB. It only runs when `config('nativephp-internal.running')` is true and the application tables (`users, devices, votings, voting_questions, voting_options, voting_attendees, votes`) are empty.
+Runtime SQLite files are not bundled or tracked in Git. On first launch, `NativeDatabaseBootstrapper` runs Laravel migrations against the NativePHP user-data database and creates only the required schema. On an application version change, startup first creates a consistent SQLite backup in `storage/app/database-backups` and only then runs pending migrations. Voting and election content is transferred through configuration import/export.
 
 ## Commands
 
@@ -62,7 +62,6 @@ npm run build
 # Desktop dev (Electron)
 composer native:dev          # runs native:run + npm run dev concurrently
 php artisan native:run        # NativePHP only
-php artisan native:prepare-seed-database   # snapshot dev DB into the bundled seed
 
 # DB
 php artisan migrate
@@ -450,7 +449,7 @@ Overall average: **60-90% token reduction** on common development operations.
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **webSerialCommunication** (8206 symbols, 15514 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **webSerialCommunication** (8507 symbols, 16223 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 

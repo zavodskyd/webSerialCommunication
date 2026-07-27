@@ -1,6 +1,8 @@
 <?php
 
+use App\Livewire\Election\ElectionEditor;
 use App\Models\User;
+use App\Models\Voting;
 use App\Support\NativeDatabaseBootstrapper;
 use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Artisan;
@@ -98,6 +100,33 @@ test('it imports bundled application data when native database is empty', functi
     expect(DB::table('users')->where('email', 'admin@example.com')->exists())->toBeTrue();
     expect(DB::table('devices')->where('device_number', '001')->exists())->toBeTrue();
     expect(DB::table('votings')->where('name', 'Ostre hlasovanie')->exists())->toBeTrue();
+});
+
+test('it imports bundled election data and opens the editor', function () {
+    config(['nativephp-internal.running' => true]);
+
+    $sourcePath = createBundledElectionSeedDatabase();
+
+    try {
+        $imported = app(NativeDatabaseBootstrapper::class)
+            ->seedFromBundledDatabaseIfEmpty($sourcePath);
+
+        $voting = Voting::query()->where('name', 'Pripravené voľby')->firstOrFail();
+
+        expect($imported)->toBeTrue()
+            ->and($voting->voting_type)->toBe('election')
+            ->and($voting->election)->not->toBeNull()
+            ->and($voting->election->contests()->count())->toBe(1)
+            ->and($voting->election->contests()->firstOrFail()->candidates()->count())->toBe(1)
+            ->and($voting->election->deviceGroups()->firstOrFail()->ranges()->count())->toBe(1);
+
+        $this->get(route('elections.edit', $voting))
+            ->assertSuccessful()
+            ->assertSeeLivewire(ElectionEditor::class)
+            ->assertSeeText('Kandidátky súťaží');
+    } finally {
+        @unlink($sourcePath);
+    }
 });
 
 test('it imports the bundled native seed database by default', function () {
@@ -306,6 +335,80 @@ function createBundledSeedDatabase(array $data): string
         'runtime_collector_enabled' => 0,
         'runtime_results_visible' => 0,
     ]);
+
+    return $sourcePath;
+}
+
+function createBundledElectionSeedDatabase(): string
+{
+    $sourcePath = createBundledSeedDatabase([
+        'email' => 'election@example.com',
+        'device_number' => '001',
+        'voting_name' => 'Pripravené voľby',
+    ]);
+    $source = new PDO("sqlite:{$sourcePath}");
+    $source->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $source->exec("ALTER TABLE votings ADD COLUMN voting_type varchar NOT NULL DEFAULT 'standard'");
+    $source->exec("UPDATE votings SET voting_type = 'election' WHERE id = 300");
+    $source->exec('
+        CREATE TABLE elections (
+            id integer primary key,
+            voting_id integer not null,
+            status varchar not null default "draft",
+            created_at datetime null,
+            updated_at datetime null
+        );
+        CREATE TABLE device_groups (
+            id integer primary key,
+            election_id integer not null,
+            name varchar not null,
+            sort_order integer not null,
+            is_active tinyint(1) not null,
+            quorum_participant_count integer null,
+            created_at datetime null,
+            updated_at datetime null
+        );
+        CREATE TABLE device_group_ranges (
+            id integer primary key,
+            device_group_id integer not null,
+            start_number integer not null,
+            end_number integer not null,
+            created_at datetime null,
+            updated_at datetime null
+        );
+        CREATE TABLE election_contests (
+            id integer primary key,
+            election_id integer not null,
+            device_group_id integer null,
+            key varchar not null,
+            name varchar not null,
+            seat_count integer not null,
+            sort_order integer not null,
+            created_at datetime null,
+            updated_at datetime null
+        );
+        CREATE TABLE election_candidates (
+            id integer primary key,
+            election_contest_id integer not null,
+            first_name varchar not null,
+            last_name varchar not null,
+            status varchar not null,
+            created_at datetime null,
+            updated_at datetime null
+        );
+    ');
+
+    $timestamp = now()->toDateTimeString();
+    $source->prepare('INSERT INTO elections (id, voting_id, status, created_at, updated_at) VALUES (400, 300, "draft", :created_at, :updated_at)')
+        ->execute(['created_at' => $timestamp, 'updated_at' => $timestamp]);
+    $source->prepare('INSERT INTO device_groups (id, election_id, name, sort_order, is_active, quorum_participant_count, created_at, updated_at) VALUES (500, 400, "Hliny", 1, 1, 120, :created_at, :updated_at)')
+        ->execute(['created_at' => $timestamp, 'updated_at' => $timestamp]);
+    $source->prepare('INSERT INTO device_group_ranges (id, device_group_id, start_number, end_number, created_at, updated_at) VALUES (600, 500, 1, 20, :created_at, :updated_at)')
+        ->execute(['created_at' => $timestamp, 'updated_at' => $timestamp]);
+    $source->prepare('INSERT INTO election_contests (id, election_id, device_group_id, key, name, seat_count, sort_order, created_at, updated_at) VALUES (700, 400, 500, "chairperson", "Predseda", 1, 1, :created_at, :updated_at)')
+        ->execute(['created_at' => $timestamp, 'updated_at' => $timestamp]);
+    $source->prepare('INSERT INTO election_candidates (id, election_contest_id, first_name, last_name, status, created_at, updated_at) VALUES (800, 700, "Jana", "Nováková", "approved", :created_at, :updated_at)')
+        ->execute(['created_at' => $timestamp, 'updated_at' => $timestamp]);
 
     return $sourcePath;
 }

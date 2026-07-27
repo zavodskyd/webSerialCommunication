@@ -20,7 +20,21 @@ class NativeDatabaseBootstrapper
         'voting_questions',
         'voting_options',
         'voting_attendees',
+        'elections',
+        'device_groups',
+        'device_group_ranges',
+        'election_contests',
+        'election_candidates',
+        'election_candidate_admissions',
+        'election_candidate_admission_device_weights',
+        'election_candidate_admission_votes',
+        'election_rounds',
+        'election_round_candidates',
+        'election_round_device_weights',
+        'election_round_votes',
+        'presentation_runtimes',
         'votes',
+        'vote_events',
     ];
 
     public function runPendingMigrations(): bool

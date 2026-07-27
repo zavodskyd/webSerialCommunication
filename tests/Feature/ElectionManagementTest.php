@@ -48,6 +48,13 @@ test('election management shows exports only after a round is closed', function 
     $voting = createElectionVoting();
 
     Livewire::test(ElectionIndex::class)
+        ->assertSeeInOrder([
+            route('elections.edit', $voting),
+            route('elections.console', $voting),
+        ], escape: false)
+        ->assertSeeHtml('bg-indigo-600')
+        ->assertSeeHtml('bg-emerald-100 text-emerald-700')
+        ->assertSeeHtml('bg-rose-100 text-rose-700')
         ->assertSee('Export výsledkov')
         ->assertSee('Export auditu')
         ->assertSeeHtml('href="'.route('elections.exports.results', $voting).'"')
@@ -62,7 +69,7 @@ test('election management shows exports only after a round is closed', function 
 
     Livewire::test(ElectionIndex::class)
         ->assertSeeHtml('bg-emerald-600 text-white hover:bg-emerald-700')
-        ->assertSeeHtml('bg-sky-600 text-white hover:bg-sky-700')
+        ->assertSeeHtml('bg-rose-600 text-white hover:bg-rose-700')
         ->assertDontSeeHtml('aria-disabled="true"');
 });
 

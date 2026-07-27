@@ -38,6 +38,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }).observe(document.body, { childList: true, subtree: true });
 
+    document.querySelectorAll('form[data-confirm-message]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            const message = form.getAttribute('data-confirm-message');
+
+            if (message && ! window.confirm(message)) {
+                event.preventDefault();
+            }
+        });
+    });
+
     const exportButtons = document.querySelectorAll('[data-backup-export-url]');
 
     if (exportButtons.length === 0) {
@@ -60,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (! window.axios) {
-                window.alert('Native export zálohy nie je momentálne dostupný.');
+                window.alert(button.getAttribute('data-export-unavailable-message') ?? 'Native export zálohy nie je momentálne dostupný.');
 
                 return;
             }
@@ -84,14 +94,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (typeof response.data?.path === 'string' && response.data.path !== '') {
-                    window.alert(`Záloha bola uložená do:\n${response.data.path}`);
+                    const savedMessage = button.getAttribute('data-export-saved-message') ?? 'Záloha bola uložená do:';
+                    window.alert(`${savedMessage}\n${response.data.path}`);
 
                     return;
                 }
 
-                window.alert('Export zálohy skončil bez potvrdenej cieľovej cesty.');
+                window.alert(button.getAttribute('data-export-empty-message') ?? 'Export zálohy skončil bez potvrdenej cieľovej cesty.');
             } catch (error) {
-                const message = error?.response?.data?.message ?? 'Export zálohy zlyhal.';
+                const message = error?.response?.data?.message
+                    ?? button.getAttribute('data-export-error-message')
+                    ?? 'Export zálohy zlyhal.';
 
                 window.alert(message);
             } finally {

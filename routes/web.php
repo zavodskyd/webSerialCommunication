@@ -4,6 +4,7 @@ use App\Http\Controllers\DatabaseBackupController;
 use App\Http\Controllers\DeviceController;
 use App\Http\Controllers\ElectionExportController;
 use App\Http\Controllers\VoteEventsExportController;
+use App\Http\Controllers\VotingConfigurationController;
 use App\Http\Controllers\VotingExportController;
 use App\Http\Controllers\VotingLogoController;
 use App\Livewire\Election\ElectionCandidateAdmissionConsole;
@@ -36,6 +37,9 @@ Route::get('/settings/backup/data', [DatabaseBackupController::class, 'downloadD
 Route::post('/settings/backup/database', [DatabaseBackupController::class, 'restoreDatabase'])->name('settings.backup.database.restore');
 Route::post('/settings/backup/data', [DatabaseBackupController::class, 'restoreData'])->name('settings.backup.data.restore');
 Route::get('/votings', VotingIndex::class)->name('votings.index');
+Route::post('/votings/import', [VotingConfigurationController::class, 'importNewVoting'])->name('votings.configuration.import-new');
+Route::get('/votings/{voting}/configuration', [VotingConfigurationController::class, 'exportVoting'])->name('votings.configuration.export');
+Route::post('/votings/{voting}/configuration', [VotingConfigurationController::class, 'importIntoVoting'])->name('votings.configuration.import');
 Route::get('/votings/{voting}', VotingEditor::class)->name('votings.edit');
 Route::get('/votings/{voting}/console', VotingConsole::class)->name('votings.console');
 Route::get('/votings/{voting}/presentation', VotingPresentation::class)->name('votings.presentation');
@@ -52,6 +56,9 @@ Route::get('/votings/{voting}/exports/pressed-options/pdf', [VotingExportControl
 Route::get('/votings/{voting}/questions/{question}/events.csv', VoteEventsExportController::class)
     ->name('votings.questions.events-export');
 Route::get('/elections', ElectionIndex::class)->name('elections.index');
+Route::post('/elections/import', [VotingConfigurationController::class, 'importNewElection'])->name('elections.configuration.import-new');
+Route::get('/elections/{voting}/configuration', [VotingConfigurationController::class, 'exportElection'])->name('elections.configuration.export');
+Route::post('/elections/{voting}/configuration', [VotingConfigurationController::class, 'importIntoElection'])->name('elections.configuration.import');
 Route::get('/elections/{voting}', ElectionEditor::class)->name('elections.edit');
 Route::get('/elections/{voting}/candidate-admissions', ElectionCandidateAdmissionConsole::class)->name('elections.candidate-admissions');
 Route::get('/elections/{voting}/console', ElectionConsole::class)->name('elections.console');

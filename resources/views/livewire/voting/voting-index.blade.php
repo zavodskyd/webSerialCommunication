@@ -38,14 +38,40 @@
                     <p class="inline-block whitespace-nowrap text-3xl font-semibold text-slate-900">{{ $votings->count() }}</p>
                 </div>
 
-                <button
-                    type="button"
-                    wire:click="toggleShowAll"
-                    class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
-                >
-                    {{ $showAll ? 'Len aktívne' : 'Všetky' }}
-                </button>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <form method="POST" action="{{ route('votings.configuration.import-new') }}" enctype="multipart/form-data" class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        @csrf
+                        <input
+                            type="file"
+                            name="configuration_file"
+                            accept="application/json,.json"
+                            required
+                            class="block max-w-xs rounded-2xl border border-cyan-200 bg-cyan-50 text-sm text-cyan-900 file:mr-3 file:rounded-xl file:border-0 file:bg-cyan-600 file:px-4 file:py-3 file:text-sm file:font-semibold file:text-white hover:file:bg-cyan-700"
+                        >
+                        <button type="submit" class="rounded-2xl bg-cyan-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-cyan-700">
+                            Importovať ako nové
+                        </button>
+                    </form>
+                    <button
+                        type="button"
+                        wire:click="toggleShowAll"
+                        class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                    >
+                        {{ $showAll ? 'Len aktívne' : 'Všetky' }}
+                    </button>
+                </div>
             </div>
+
+            @if (session('status'))
+                <div data-flash-message class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-800 transition-opacity duration-300">
+                    {{ session('status') }}
+                </div>
+            @endif
+            @error('configuration_file')
+                <div class="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-800">
+                    {{ $message }}
+                </div>
+            @enderror
 
             <div class="mt-6 space-y-4">
                 @forelse ($votings as $voting)
@@ -121,6 +147,38 @@
                             <button type="button" wire:click="copyVoting({{ $voting->id }})" class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800 transition hover:bg-sky-100">
                                 Kopírovať
                             </button>
+                            <button
+                                type="button"
+                                data-backup-export-url="{{ route('votings.configuration.export', $voting) }}"
+                                data-native-running="{{ config('nativephp-internal.running') ? 'true' : 'false' }}"
+                                data-exporting-label="Exportujem konfiguráciu…"
+                                data-export-saved-message="Konfigurácia bola uložená do:"
+                                data-export-unavailable-message="Native export konfigurácie nie je momentálne dostupný."
+                                data-export-empty-message="Export konfigurácie skončil bez potvrdenej cieľovej cesty."
+                                data-export-error-message="Export konfigurácie zlyhal."
+                                class="rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:cursor-wait disabled:opacity-70"
+                            >
+                                Exportovať konfiguráciu
+                            </button>
+                            <form
+                                method="POST"
+                                action="{{ route('votings.configuration.import', $voting) }}"
+                                enctype="multipart/form-data"
+                                data-confirm-message="Import nahradí celú konfiguráciu a prevádzkové údaje tohto hlasovania. Názov zostane zachovaný. Pokračovať?"
+                                class="flex flex-col gap-2 sm:flex-row sm:items-center"
+                            >
+                                @csrf
+                                <input
+                                    type="file"
+                                    name="configuration_file"
+                                    accept="application/json,.json"
+                                    required
+                                    class="block max-w-xs rounded-2xl border border-teal-200 bg-teal-50 text-xs text-teal-900 file:mr-2 file:rounded-xl file:border-0 file:bg-teal-600 file:px-3 file:py-3 file:text-xs file:font-semibold file:text-white hover:file:bg-teal-700"
+                                >
+                                <button type="submit" class="rounded-2xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-teal-700">
+                                    Importovať konfiguráciu
+                                </button>
+                            </form>
                             @if (! $voting->archived_at)
                                 <button type="button" wire:click="archiveVoting({{ $voting->id }})" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-100">
                                     Archivovať

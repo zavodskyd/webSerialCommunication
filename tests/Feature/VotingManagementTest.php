@@ -69,6 +69,42 @@ test('user can create a new voting from the index', function () {
     expect(Voting::query()->where('name', 'Zhromaždenie delegátov 2026')->exists())->toBeTrue();
 });
 
+test('voting management groups secondary actions and uses offline svg icons', function () {
+    $voting = Voting::query()->create([
+        'name' => 'Valné zhromaždenie',
+    ]);
+
+    Livewire::test(VotingIndex::class)
+        ->assertSeeInOrder([
+            'Otvoriť editor',
+            'Otvoriť konzolu',
+            'Výsledky a exporty',
+            'Ďalšie možnosti',
+        ])
+        ->assertSee('Importovať hlasovanie')
+        ->assertSee('Kopírovať')
+        ->assertSee('Exportovať konfiguráciu')
+        ->assertSee('Importovať konfiguráciu')
+        ->assertSee('Archivovať')
+        ->assertSeeHtml('<svg')
+        ->assertSeeHtml('class="sr-only"')
+        ->assertDontSeeHtml('href="'.route('votings.exports.results', $voting).'"')
+        ->assertDontSeeHtml('href="'.route('votings.exports.pressed-options', $voting).'"');
+
+    $voting->createQuestionWithDefaults(
+        order: 1,
+        label: 'Hlasovanie 1',
+        text: 'Schválenie programu',
+        responseTimeSeconds: 30,
+    )->update(['status' => 'closed']);
+
+    Livewire::test(VotingIndex::class)
+        ->assertSee('Export výsledkov')
+        ->assertSee('Export stlačených možností')
+        ->assertSeeHtml('href="'.route('votings.exports.results', $voting).'"')
+        ->assertSeeHtml('href="'.route('votings.exports.pressed-options', $voting).'"');
+});
+
 test('user can copy a prepared voting with questions options and device weights', function () {
     $voting = Voting::query()->create([
         'name' => 'Valné zhromaždenie',

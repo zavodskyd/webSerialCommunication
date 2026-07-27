@@ -44,22 +44,22 @@ test('election management routes render their Livewire components', function () 
         ->assertSeeText('Kandidátky súťaží');
 });
 
-test('election management shows exports only after a round is closed', function () {
+test('election management keeps primary actions clear and enables exports after a round is closed', function () {
     $voting = createElectionVoting();
 
     Livewire::test(ElectionIndex::class)
         ->assertSeeInOrder([
-            route('elections.edit', $voting),
-            route('elections.console', $voting),
-        ], escape: false)
-        ->assertSeeHtml('bg-indigo-600')
-        ->assertSeeHtml('bg-emerald-100 text-emerald-700')
-        ->assertSeeHtml('bg-rose-100 text-rose-700')
-        ->assertSee('Export výsledkov')
-        ->assertSee('Export auditu')
-        ->assertSeeHtml('href="'.route('elections.exports.results', $voting).'"')
-        ->assertSeeHtml('href="'.route('elections.exports.audit', $voting).'"')
-        ->assertSeeHtml('aria-disabled="true"');
+            'Otvoriť editor',
+            'Otvoriť konzolu',
+            'Výsledky a audit',
+            'Ďalšie možnosti',
+        ])
+        ->assertSee('Importovať voľby')
+        ->assertSeeHtml('<svg')
+        ->assertSeeHtml('class="sr-only"')
+        ->assertSeeHtml('disabled')
+        ->assertDontSeeHtml('href="'.route('elections.exports.results', $voting).'"')
+        ->assertDontSeeHtml('href="'.route('elections.exports.audit', $voting).'"');
 
     $voting->election->contests()->firstOrFail()->rounds()->create([
         'round_number' => 1,
@@ -68,9 +68,10 @@ test('election management shows exports only after a round is closed', function 
     ]);
 
     Livewire::test(ElectionIndex::class)
-        ->assertSeeHtml('bg-emerald-600 text-white hover:bg-emerald-700')
-        ->assertSeeHtml('bg-rose-600 text-white hover:bg-rose-700')
-        ->assertDontSeeHtml('aria-disabled="true"');
+        ->assertSee('Export výsledkov')
+        ->assertSee('Export auditu')
+        ->assertSeeHtml('href="'.route('elections.exports.results', $voting).'"')
+        ->assertSeeHtml('href="'.route('elections.exports.audit', $voting).'"');
 });
 
 test('user can archive and activate election from the index', function () {

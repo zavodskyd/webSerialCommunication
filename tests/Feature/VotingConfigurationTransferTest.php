@@ -202,7 +202,7 @@ test('configuration actions are visible for active and archived records', functi
 
     $this->get(route('votings.index'))
         ->assertSuccessful()
-        ->assertSeeText('Importovať ako nové')
+        ->assertSeeText('Importovať hlasovanie')
         ->assertSee(route('votings.configuration.export', $activeVoting));
 
     $this->get(route('votings.index').'?showAll=1');

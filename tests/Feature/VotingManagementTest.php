@@ -26,6 +26,7 @@ test('visitor can view voting pages', function () {
 
     $this->get(route('votings.index'))
         ->assertOk()
+        ->assertSee('<link rel="icon" type="image/svg+xml" href="'.asset('images/konseza-icon.svg').'">', false)
         ->assertSeeLivewire(VotingIndex::class)
         ->assertSeeText('Správa hlasovaní a otázok');
 

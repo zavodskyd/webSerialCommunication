@@ -279,6 +279,29 @@ test('returns unknown_device for a valid frame without configured voting device'
     expect($result->rejectionReason)->toBe('unknown_device');
 });
 
+test('rejects a frame received after the question deadline', function () {
+    [$voting, $question] = createRecorderFixture();
+    $voting->forceFill(['runtime_collector_enabled' => true])->save();
+    $question->update([
+        'status' => 'live',
+        'opened_at' => now()->startOfSecond(),
+    ]);
+    $receivedAt = $question->fresh()->opened_at->toImmutable()->addSeconds($question->response_time_seconds + 1);
+
+    $result = app(VoteRecorder::class)->record(
+        code: qomoFrameFor(1, 'A'),
+        voting: $voting,
+        question: $question,
+        collectorEnabledHint: true,
+        receivedAt: $receivedAt,
+    );
+
+    expect($result->accepted)->toBeFalse();
+    expect($result->rejectionReason)->toBe('after_deadline');
+    expect(Vote::query()->count())->toBe(0);
+    expect(VoteEvent::query()->latest('id')->value('received_at')->getTimestamp())->toBe($receivedAt->getTimestamp());
+});
+
 test('result toArray returns the same shape as the legacy Livewire response', function () {
     [$voting, $question, $device] = createRecorderFixture();
 

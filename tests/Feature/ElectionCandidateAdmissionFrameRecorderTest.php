@@ -26,6 +26,24 @@ test('serial frames vote for the active candidate admission and replace the devi
     expect(VoteEvent::query()->whereNull('voting_question_id')->count())->toBe(2);
 });
 
+test('candidate admission counts a frame at the deadline and rejects a later frame', function () {
+    [, $admission] = activeAdmissionFixture();
+    $admission->update([
+        'opened_at' => now()->startOfSecond(),
+        'response_time_seconds' => 30,
+    ]);
+    $deadline = $admission->fresh()->opened_at->toImmutable()->addSeconds(30);
+    $handler = app(SerialAgentFrameHandler::class);
+
+    $accepted = $handler->handle(qomoFrameFor(1, 'A'), $deadline);
+    $late = $handler->handle(qomoFrameFor(1, 'B'), $deadline->addSecond());
+
+    expect($accepted?->accepted)->toBeTrue();
+    expect($late?->accepted)->toBeFalse();
+    expect($late?->rejectionReason)->toBe('after_deadline');
+    expect($admission->votes()->count())->toBe(1);
+});
+
 test('an active localized admission rejects a serial frame from outside its device range', function () {
     [, $admission] = activeAdmissionFixture();
     $outsideDevice = Device::query()->create([

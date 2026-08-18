@@ -129,7 +129,7 @@ test('finishing the last candidate automatically shows the round result', functi
         'connected' => true,
     ]);
     $this->serialAgent->shouldReceive('command')->once()->with('start')->andReturn(['ok' => true]);
-    $this->serialAgent->shouldReceive('command')->once()->with('stop')->andReturn(['ok' => true]);
+    $this->serialAgent->shouldReceive('stopAndDrain')->once()->andReturn(['ok' => true, 'drained' => true, 'collecting' => false, 'queued_frames' => 0]);
 
     Livewire::test(ElectionConsole::class, ['voting' => $voting])
         ->call('startRoundViaHelper')

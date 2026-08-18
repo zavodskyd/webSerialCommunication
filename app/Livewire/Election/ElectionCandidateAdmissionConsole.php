@@ -73,7 +73,13 @@ class ElectionCandidateAdmissionConsole extends Component
 
     public function stopAdmission(int $admissionId, ElectionCandidateAdmissionManager $admissions, SerialAgentClient $serialAgent): void
     {
-        $serialAgent->command('stop');
+        $response = $serialAgent->stopAndDrain();
+        if (($response['ok'] ?? false) !== true || ($response['drained'] ?? false) !== true) {
+            session()->flash('status', 'Čaká sa na spracovanie prijatých hlasov: '.($response['error'] ?? 'neznáma chyba'));
+
+            return;
+        }
+
         $admissions->stop($this->admission($admissionId));
     }
 
@@ -93,8 +99,10 @@ class ElectionCandidateAdmissionConsole extends Component
         if ($admission !== null
             && $admission->opened_at !== null
             && now()->greaterThanOrEqualTo($admission->opened_at->copy()->addSeconds($admission->response_time_seconds))) {
-            $serialAgent->command('stop');
-            $admissions->finish($admission);
+            $response = $serialAgent->stopAndDrain();
+            if (($response['ok'] ?? false) === true && ($response['drained'] ?? false) === true) {
+                $admissions->finish($admission);
+            }
         }
     }
 

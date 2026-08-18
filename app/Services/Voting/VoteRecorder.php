@@ -10,6 +10,7 @@ use App\Models\Voting;
 use App\Models\VotingAttendee;
 use App\Models\VotingQuestion;
 use App\Support\QomoHexFrameDecoder;
+use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 class VoteRecorder
@@ -35,8 +36,9 @@ class VoteRecorder
         VotingQuestion $question,
         bool $collectorEnabledHint = false,
         string $source = 'rust-agent',
+        ?CarbonImmutable $receivedAt = null,
     ): VoteRecordingResult {
-        $result = $this->resolveResult($code, $voting, $question, $collectorEnabledHint);
+        $result = $this->resolveResult($code, $voting, $question, $collectorEnabledHint, $receivedAt);
 
         $this->logEvent(
             voting: $voting,
@@ -44,6 +46,7 @@ class VoteRecorder
             code: $code,
             result: $result,
             source: $source,
+            receivedAt: $receivedAt,
         );
 
         return $result;
@@ -54,7 +57,20 @@ class VoteRecorder
         Voting $voting,
         VotingQuestion $question,
         bool $collectorEnabledHint,
+        ?CarbonImmutable $receivedAt,
     ): VoteRecordingResult {
+        $deadline = $question->opened_at?->copy()->addSeconds($question->response_time_seconds);
+        if ($receivedAt !== null && $deadline !== null && $receivedAt->greaterThan($deadline)) {
+            return new VoteRecordingResult(
+                accepted: false,
+                message: 'Hlas prišiel po skončení časového limitu.',
+                deviceNumber: null,
+                buttonName: null,
+                results: $question->summarizedResults(),
+                rejectionReason: 'after_deadline',
+            );
+        }
+
         if (! $collectorEnabledHint && ! $this->isCollectingVotes($voting, $question)) {
             return new VoteRecordingResult(
                 accepted: false,
@@ -156,6 +172,7 @@ class VoteRecorder
         string $code,
         VoteRecordingResult $result,
         string $source,
+        ?CarbonImmutable $receivedAt,
     ): void {
         $deviceId = $result->deviceNumber !== null
             ? Device::query()->where('device_number', $result->deviceNumber)->value('id')
@@ -170,7 +187,7 @@ class VoteRecorder
             'button_name' => $result->buttonName,
             'accepted' => $result->accepted,
             'rejection_reason' => $result->rejectionReason,
-            'received_at' => now(),
+            'received_at' => $receivedAt ?? now(),
         ]);
     }
 

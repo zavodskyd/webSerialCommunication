@@ -10,6 +10,7 @@ use App\Models\VoteEvent;
 use App\Services\Voting\VoteRecordingResult;
 use App\Support\PresentationRuntimeManager;
 use App\Support\QomoHexFrameDecoder;
+use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 class ElectionCandidateAdmissionFrameRecorder
@@ -20,7 +21,7 @@ class ElectionCandidateAdmissionFrameRecorder
         private readonly QomoHexFrameDecoder $frameDecoder,
     ) {}
 
-    public function recordIfActive(string $hex): ?VoteRecordingResult
+    public function recordIfActive(string $hex, ?CarbonImmutable $receivedAt = null): ?VoteRecordingResult
     {
         $runtime = $this->runtime->current();
 
@@ -35,6 +36,11 @@ class ElectionCandidateAdmissionFrameRecorder
         }
 
         $decodedFrame = $this->frameDecoder->decode($hex);
+        $deadline = $admission->opened_at?->copy()->addSeconds($admission->response_time_seconds);
+
+        if ($receivedAt !== null && $deadline !== null && $receivedAt->greaterThan($deadline)) {
+            return $this->logResult($admission, $hex, $this->rejected('Hlas prišiel po skončení časového limitu.', $decodedFrame === null ? null : (string) $decodedFrame['deviceNumber'], $decodedFrame['buttonName'] ?? null, $this->admissions->summarizedResults($admission), 'after_deadline'), $receivedAt);
+        }
 
         if ($decodedFrame === null) {
             return $this->logResult($admission, $hex, $this->rejected('Kód '.$hex.' sa nenašiel.', null, null, $this->admissions->summarizedResults($admission), 'unknown_code'));
@@ -64,7 +70,7 @@ class ElectionCandidateAdmissionFrameRecorder
             deviceNumber: $device->device_number,
             buttonName: $decodedFrame['buttonName'],
             results: $this->admissions->summarizedResults($admission),
-        ));
+        ), $receivedAt);
     }
 
     private function activeAdmission(PresentationRuntime $runtime): ?ElectionCandidateAdmission
@@ -104,7 +110,7 @@ class ElectionCandidateAdmissionFrameRecorder
         return new VoteRecordingResult(false, $message, $deviceNumber, $buttonName, $results, $reason);
     }
 
-    private function logResult(ElectionCandidateAdmission $admission, string $hex, VoteRecordingResult $result): VoteRecordingResult
+    private function logResult(ElectionCandidateAdmission $admission, string $hex, VoteRecordingResult $result, ?CarbonImmutable $receivedAt = null): VoteRecordingResult
     {
         $deviceId = $result->deviceNumber !== null
             ? Device::query()->where('device_number', $result->deviceNumber)->value('id')
@@ -119,7 +125,7 @@ class ElectionCandidateAdmissionFrameRecorder
             'button_name' => $result->buttonName,
             'accepted' => $result->accepted,
             'rejection_reason' => $result->rejectionReason,
-            'received_at' => now(),
+            'received_at' => $receivedAt ?? now(),
         ]);
 
         return $result;

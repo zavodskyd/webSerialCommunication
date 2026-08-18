@@ -10,6 +10,7 @@ use App\Support\SerialAgentMode;
 use App\Support\SerialAgentStatus;
 use App\Support\SerialAgentTestMonitor;
 use App\Support\SerialAgentTokens;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -92,6 +93,9 @@ class SerialAgentBridge extends Command
     {
         $id = (string) ($payload['id'] ?? '');
         $hex = (string) ($payload['hex'] ?? '');
+        $receivedAt = is_string($payload['received_at'] ?? null)
+            ? CarbonImmutable::parse($payload['received_at'])
+            : null;
 
         if ($id === '' || $hex === '') {
             return;
@@ -108,7 +112,7 @@ class SerialAgentBridge extends Command
             return;
         }
 
-        $handler->handle($hex);
+        $handler->handle($hex, $receivedAt);
 
         $connection->sendText(json_encode([
             'type' => 'ack',

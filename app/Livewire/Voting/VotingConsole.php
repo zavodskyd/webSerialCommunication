@@ -120,7 +120,9 @@ class VotingConsole extends Component
 
     public function finishQuestionViaHelper(): void
     {
-        app(SerialAgentClient::class)->command('stop');
+        if (! $this->stopAndDrainSerialAgent()) {
+            return;
+        }
 
         $this->finishQuestion();
     }
@@ -144,7 +146,9 @@ class VotingConsole extends Component
         $this->remainingSeconds = max(0, $question->response_time_seconds - $elapsed);
 
         if ($this->remainingSeconds <= 0) {
-            app(SerialAgentClient::class)->command('stop');
+            if (! $this->stopAndDrainSerialAgent()) {
+                return;
+            }
 
             $this->finishQuestion(0);
 
@@ -154,6 +158,20 @@ class VotingConsole extends Component
         if ($this->voting->runtime_remaining_seconds !== $this->remainingSeconds) {
             $this->persistRuntimeState();
         }
+    }
+
+    private function stopAndDrainSerialAgent(): bool
+    {
+        $response = app(SerialAgentClient::class)->stopAndDrain();
+        $this->serialAgentQueuedFrames = (int) ($response['queued_frames'] ?? $this->serialAgentQueuedFrames);
+
+        if (($response['ok'] ?? false) === true && ($response['drained'] ?? false) === true) {
+            return true;
+        }
+
+        $this->lastVoteMessage = 'Čaká sa na spracovanie prijatých hlasov: '.($response['error'] ?? 'neznáma chyba');
+
+        return false;
     }
 
     private function probeSerialAgentHealthIfDue(): void

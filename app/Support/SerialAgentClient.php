@@ -96,6 +96,38 @@ class SerialAgentClient
     }
 
     /**
+     * Stop serial collection and wait until the bridge acknowledges every queued frame.
+     *
+     * @return array{ok: bool, drained: bool, connected?: bool, collecting?: bool, selected_port?: ?string, queued_frames?: int, error?: string}
+     */
+    public function stopAndDrain(int $timeoutMilliseconds = 10000): array
+    {
+        $response = $this->command('stop');
+        if (($response['ok'] ?? false) !== true) {
+            return array_merge($response, ['drained' => false]);
+        }
+
+        $deadline = microtime(true) + ($timeoutMilliseconds / 1000);
+
+        do {
+            $health = $this->health();
+            if (($health['ok'] ?? false) === true
+                && ($health['collecting'] ?? true) === false
+                && (int) ($health['queued_frames'] ?? -1) === 0) {
+                return array_merge($health, ['drained' => true]);
+            }
+
+            usleep(50000);
+        } while (microtime(true) < $deadline);
+
+        return [
+            'ok' => false,
+            'drained' => false,
+            'error' => 'serial-agent queue was not drained before timeout',
+        ];
+    }
+
+    /**
      * @return array{ok: bool, connected?: bool, collecting?: bool, selected_port?: ?string, queued_frames?: int, error?: string}
      */
     public function health(): array

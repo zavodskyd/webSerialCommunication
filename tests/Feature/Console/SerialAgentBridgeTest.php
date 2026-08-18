@@ -11,7 +11,7 @@ afterEach(function () {
 
 test('it mirrors frames into the test monitor and voting handler before acknowledging them outside test mode', function () {
     $handler = Mockery::mock(SerialAgentFrameHandler::class);
-    $handler->shouldReceive('handle')->once()->with('2081a1');
+    $handler->shouldReceive('handle')->once()->with('2081a1', null);
 
     $monitor = Mockery::mock(SerialAgentTestMonitor::class);
     $monitor->shouldReceive('recordFrame')->once()->with('2081a1');

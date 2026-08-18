@@ -26,6 +26,25 @@ test('a round serial frame is accepted and audited with its election context', f
     ]);
 });
 
+test('a frame received at the deadline is counted and a later frame is rejected', function () {
+    [$round] = activeRoundFixture();
+    $round->update([
+        'opened_at' => now()->startOfSecond(),
+        'response_time_seconds' => 30,
+    ]);
+    $deadline = $round->fresh()->opened_at->toImmutable()->addSeconds(30);
+    $handler = app(SerialAgentFrameHandler::class);
+
+    $accepted = $handler->handle(qomoFrameFor(1, 'A'), $deadline);
+    $late = $handler->handle(qomoFrameFor(1, 'A'), $deadline->addSecond());
+
+    expect($accepted?->accepted)->toBeTrue();
+    expect($late?->accepted)->toBeFalse();
+    expect($late?->rejectionReason)->toBe('after_deadline');
+    expect($round->votes()->count())->toBe(1);
+    expect(VoteEvent::query()->where('election_round_id', $round->id)->latest('id')->value('received_at')->getTimestamp())->toBe($deadline->addSecond()->getTimestamp());
+});
+
 test('a rejected round serial frame is audited without creating a vote', function () {
     [$round, $candidate] = activeRoundFixture();
 

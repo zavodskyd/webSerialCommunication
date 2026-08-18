@@ -113,7 +113,7 @@ test('rust agent driver keeps collection running while paused and stops only on 
 
         return ['ok' => true];
     });
-    $client->shouldReceive('command')->once()->with('stop')->andReturn(['ok' => true]);
+    $client->shouldReceive('stopAndDrain')->once()->andReturn(['ok' => true, 'drained' => true, 'collecting' => false, 'queued_frames' => 0]);
 
     $component = app(VotingConsole::class);
     $component->mount($voting);

@@ -35,6 +35,23 @@ test('it records rust-agent frames into the active voting question', function ()
     expect($event->raw_hex)->toBe(qomoFrameFor(1, 'A'));
 });
 
+test('it counts a main-voting frame at the deadline and rejects a later frame', function () {
+    [$voting] = createSerialAgentFrameFixture();
+    $question = $voting->questions()->findOrFail($voting->current_voting_question_id);
+    $question->update(['opened_at' => now()->startOfSecond()]);
+    $deadline = $question->fresh()->opened_at->toImmutable()->addSeconds($question->response_time_seconds);
+    $handler = app(SerialAgentFrameHandler::class);
+
+    $accepted = $handler->handle(qomoFrameFor(1, 'A'), $deadline);
+    $late = $handler->handle(qomoFrameFor(1, 'B'), $deadline->addSecond());
+
+    expect($accepted?->accepted)->toBeTrue();
+    expect($late?->accepted)->toBeFalse();
+    expect($late?->rejectionReason)->toBe('after_deadline');
+    expect(Vote::query()->count())->toBe(1);
+    expect(VoteEvent::query()->latest('id')->value('received_at')->getTimestamp())->toBe($deadline->addSecond()->getTimestamp());
+});
+
 test('it routes frames to the voting with active collection', function () {
     [$activeVoting, $device] = createSerialAgentFrameFixture();
 

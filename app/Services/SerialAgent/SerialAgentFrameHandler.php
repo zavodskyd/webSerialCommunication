@@ -9,6 +9,7 @@ use App\Services\ElectionCandidateAdmissionFrameRecorder;
 use App\Services\ElectionRoundFrameRecorder;
 use App\Services\Voting\VoteRecorder;
 use App\Services\Voting\VoteRecordingResult;
+use Carbon\CarbonImmutable;
 
 class SerialAgentFrameHandler
 {
@@ -18,15 +19,15 @@ class SerialAgentFrameHandler
         private readonly ElectionRoundFrameRecorder $roundRecorder,
     ) {}
 
-    public function handle(string $hex): ?VoteRecordingResult
+    public function handle(string $hex, ?CarbonImmutable $receivedAt = null): ?VoteRecordingResult
     {
-        $admissionResult = $this->admissionRecorder->recordIfActive($hex);
+        $admissionResult = $this->admissionRecorder->recordIfActive($hex, $receivedAt);
 
         if ($admissionResult !== null) {
             return $admissionResult;
         }
 
-        $roundResult = $this->roundRecorder->recordIfActive($hex);
+        $roundResult = $this->roundRecorder->recordIfActive($hex, $receivedAt);
         if ($roundResult !== null) {
             return $roundResult;
         }
@@ -53,6 +54,7 @@ class SerialAgentFrameHandler
             question: $question,
             collectorEnabledHint: false,
             source: 'rust-agent',
+            receivedAt: $receivedAt,
         );
     }
 }

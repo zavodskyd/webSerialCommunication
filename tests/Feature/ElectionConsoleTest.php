@@ -3,6 +3,7 @@
 use App\Livewire\Election\ElectionConsole;
 use App\Models\Election;
 use App\Models\Voting;
+use App\Support\SerialAgentClient;
 use Livewire\Livewire;
 
 test('the election console links back to its editor', function () {
@@ -52,7 +53,12 @@ test('the election console uses the configured response time for a created round
     expect($contest->rounds()->firstOrFail()->response_time_seconds)->toBe(10);
 });
 
-test('the election console advances to the next candidate after stopping the current one', function () {
+test('the election console advances to the next candidate only after the serial queue is drained', function () {
+    $client = Mockery::mock(SerialAgentClient::class);
+    $client->shouldReceive('health')->andReturn(['ok' => true, 'connected' => true])->byDefault();
+    $client->shouldReceive('stopAndDrain')->once()->andReturn(['ok' => true, 'drained' => true, 'collecting' => false, 'queued_frames' => 0]);
+    app()->instance(SerialAgentClient::class, $client);
+
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
     $election = Election::query()->create(['voting_id' => $voting->id, 'weight_one_device_count' => 1, 'quorum_participant_count' => 1]);
     $election->createDefaultContests();
@@ -75,6 +81,34 @@ test('the election console advances to the next candidate after stopping the cur
         ->assertSet('timerRunning', false);
 
     expect($firstCandidateId)->not->toBe($secondCandidateId);
+});
+
+test('the election console does not advance while the serial queue is not drained', function () {
+    $client = Mockery::mock(SerialAgentClient::class);
+    $client->shouldReceive('health')->andReturn(['ok' => true, 'connected' => true])->byDefault();
+    $client->shouldReceive('stopAndDrain')->once()->andReturn(['ok' => false, 'drained' => false, 'error' => 'queue pending']);
+    app()->instance(SerialAgentClient::class, $client);
+
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'weight_one_device_count' => 1, 'quorum_participant_count' => 1]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->firstOrFail();
+    $contest->candidates()->createMany([
+        ['first_name' => 'Anna', 'last_name' => 'Adamová'],
+        ['first_name' => 'Bea', 'last_name' => 'Bérová'],
+    ]);
+
+    $component = Livewire::test(ElectionConsole::class, ['voting' => $voting]);
+    $component->call('createRound');
+    $round = $contest->rounds()->firstOrFail();
+    $firstCandidateId = $round->candidates()->orderBy('sort_order')->value('id');
+
+    $component->set('collectorEnabled', true)
+        ->call('stopRoundViaHelper')
+        ->assertSet('candidateId', $firstCandidateId)
+        ->assertSet('collectorEnabled', true);
+
+    expect($round->fresh()->status)->toBe('draft');
 });
 
 test('the manual result action remains available while the result is already displayed', function () {

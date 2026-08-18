@@ -108,7 +108,10 @@ class ElectionConsole extends Component
             return;
         }
 
-        app(SerialAgentClient::class)->command('stop');
+        if (! $this->stopAndDrainSerialAgent()) {
+            return;
+        }
+
         $this->finishCurrentCandidate($rounds, $runtime);
     }
 
@@ -163,7 +166,10 @@ class ElectionConsole extends Component
         $this->remainingSeconds = max(0, $round->response_time_seconds - $this->elapsedSecondsSince($round->opened_at));
 
         if ($this->remainingSeconds <= 0) {
-            app(SerialAgentClient::class)->command('stop');
+            if (! $this->stopAndDrainSerialAgent()) {
+                return;
+            }
+
             $this->finishCurrentCandidate($rounds, $runtime, 0);
 
             return;
@@ -259,6 +265,18 @@ class ElectionConsole extends Component
         $round->update(['opened_at' => now()->startOfSecond()->subSeconds($consumed)]);
         $this->timerRunning = true;
         $this->persistRuntimeState();
+    }
+
+    private function stopAndDrainSerialAgent(): bool
+    {
+        $response = app(SerialAgentClient::class)->stopAndDrain();
+        if (($response['ok'] ?? false) === true && ($response['drained'] ?? false) === true) {
+            return true;
+        }
+
+        session()->flash('status', 'Čaká sa na spracovanie prijatých hlasov: '.($response['error'] ?? 'neznáma chyba'));
+
+        return false;
     }
 
     private function finishCurrentCandidate(ElectionRoundManager $rounds, PresentationRuntimeManager $runtime, ?int $remainingSeconds = null): void

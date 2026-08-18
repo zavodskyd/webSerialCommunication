@@ -105,6 +105,8 @@ class VotingPresentation extends Component
             'admissionResults' => $admission ? $admissions->summarizedResults($admission) : [],
             'round' => $round,
             'roundResults' => $roundResults,
+            'roundSeatLimit' => $calculatedRoundResults['remaining_seats'] ?? null,
+            'roundAcceptedDeviceCount' => $calculatedRoundResults['accepted_device_count'] ?? 0,
             'roundResultsVisible' => $roundResultsVisible,
             'displayRoundCandidates' => $displayRoundCandidates->all(),
             'activeRoundCandidateId' => $activeRuntime->content_type === 'election_round' ? (int) ($activeRuntime->context['candidate_id'] ?? 0) : null,

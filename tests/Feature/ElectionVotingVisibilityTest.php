@@ -55,14 +55,17 @@ test('presentation does not expose election votes until results are shown', func
 
     $presentation = app(VotingPresentation::class);
     $presentation->mount($voting);
-    $hiddenViewData = $presentation->render(
+    $hiddenView = $presentation->render(
         app(PresentationRuntimeManager::class),
         app(ElectionCandidateAdmissionManager::class),
         $rounds,
-    )->getData();
+    );
+    $hiddenViewData = $hiddenView->getData();
+    $hiddenView->with('voting', $voting)->render();
 
     expect($hiddenViewData['roundResults'])->toBeNull()
-        ->and($hiddenViewData['displayRoundCandidates'][0]['weighted_total'])->toBeNull();
+        ->and($hiddenViewData['displayRoundCandidates'][0]['weighted_total'])->toBeNull()
+        ->and($hiddenViewData['roundAcceptedDeviceCount'])->toBe(1);
 
     $round->update(['status' => 'closed', 'closed_at' => now()]);
     $voting->update(['runtime_results_visible' => true]);

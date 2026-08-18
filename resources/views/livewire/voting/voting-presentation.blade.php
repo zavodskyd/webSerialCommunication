@@ -139,12 +139,12 @@
                         </div>
                         <p class="border-t border-slate-200 pt-6 text-xl text-slate-950">
                             Možno označiť najviac
-                            <strong class="text-5xl font-bold text-slate-950">{{ $roundResults['remaining_seats'] }}</strong>
+                            <strong class="text-5xl font-bold text-slate-950">{{ $roundSeatLimit }}</strong>
                             kandidátov.
                         </p>
                     </div>
                     <div class="text-xl text-slate-500">
-                        Zariadení s platným hlasom: <strong class="text-3xl font-bold text-slate-950">{{ $roundResults['accepted_device_count'] }}</strong>
+                        Zariadení s platným hlasom: <strong class="text-3xl font-bold text-slate-950">{{ $roundAcceptedDeviceCount }}</strong>
                     </div>
                 </aside>
             </main>

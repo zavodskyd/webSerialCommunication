@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ElectionCandidateAdmission extends Model
 {
-    protected $fillable = ['election_id', 'election_contest_id', 'device_group_id', 'first_name', 'last_name', 'status', 'response_time_seconds', 'active_device_limit', 'eligible_weight_total', 'quorum_participant_count_snapshot', 'opened_at', 'closed_at', 'resolved_at', 'results_visible'];
+    protected $fillable = ['election_id', 'election_contest_id', 'created_election_candidate_id', 'device_group_id', 'first_name', 'last_name', 'status', 'response_time_seconds', 'active_device_limit', 'eligible_weight_total', 'quorum_participant_count_snapshot', 'opened_at', 'closed_at', 'resolved_at', 'results_visible'];
 
     protected function casts(): array
     {
@@ -28,6 +28,11 @@ class ElectionCandidateAdmission extends Model
     public function deviceGroup(): BelongsTo
     {
         return $this->belongsTo(DeviceGroup::class);
+    }
+
+    public function createdCandidate(): BelongsTo
+    {
+        return $this->belongsTo(ElectionCandidate::class, 'created_election_candidate_id');
     }
 
     public function votes(): HasMany

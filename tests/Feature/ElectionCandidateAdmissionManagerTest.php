@@ -31,7 +31,8 @@ test('the last valid admission vote replaces the prior device vote and accepted 
     expect($admission->votes()->where('device_id', $firstDevice->id)->value('option_key'))->toBe('B');
 
     $manager->stop($admission);
-    $manager->showResults($admission);
+    $resolvedAdmission = $manager->showResults($admission);
+    expect($resolvedAdmission->status)->toBe('accepted');
     expect($manager->resolve($admission)->status)->toBe('accepted');
     expect($contest->candidates()->where('first_name', 'Jana')->where('last_name', 'Nováková')->exists())->toBeTrue();
     expect($draftRound->candidates()->where('first_name', 'Jana')->where('last_name', 'Nováková')->exists())->toBeTrue();
@@ -128,6 +129,68 @@ test('supervisory committee candidate admission requires the general participant
 
     expect(fn () => app(ElectionCandidateAdmissionManager::class)->start($admission))
         ->toThrow(InvalidArgumentException::class, 'Pred spustením nastavte celkový počet účastníkov pre základ väčšiny.');
+});
+
+test('restarting an accepted admission removes only the candidate created by that admission', function () {
+    [$election, $contest, $group] = admissionFixture();
+    $device = admissionDevice('001', 4);
+    $contest->rounds()->create(['round_number' => 1, 'status' => 'draft']);
+    $admission = ElectionCandidateAdmission::query()->create([
+        'election_id' => $election->id,
+        'election_contest_id' => $contest->id,
+        'device_group_id' => $group->id,
+        'first_name' => 'Jana',
+        'last_name' => 'Nováková',
+    ]);
+    $manager = app(ElectionCandidateAdmissionManager::class);
+
+    $manager->start($admission);
+    $manager->recordVote($admission, $device, 'A');
+    $manager->stop($admission);
+    $resolvedAdmission = $manager->showResults($admission);
+    $createdCandidateId = $resolvedAdmission->created_election_candidate_id;
+
+    expect($resolvedAdmission->status)->toBe('accepted')
+        ->and($createdCandidateId)->not->toBeNull();
+
+    $restartedAdmission = $manager->restart($resolvedAdmission);
+
+    expect($restartedAdmission->status)->toBe('live')
+        ->and($restartedAdmission->created_election_candidate_id)->toBeNull()
+        ->and($restartedAdmission->results_visible)->toBeFalse()
+        ->and($restartedAdmission->votes()->count())->toBe(0)
+        ->and($contest->candidates()->whereKey($createdCandidateId)->exists())->toBeFalse();
+});
+
+test('restarting an accepted admission keeps a matching pre-existing candidate', function () {
+    [$election, $contest, $group] = admissionFixture();
+    $device = admissionDevice('001', 4);
+    $candidate = $contest->candidates()->create([
+        'first_name' => 'Jana',
+        'last_name' => 'Nováková',
+        'status' => 'approved',
+    ]);
+    $contest->rounds()->create(['round_number' => 1, 'status' => 'draft']);
+    $admission = ElectionCandidateAdmission::query()->create([
+        'election_id' => $election->id,
+        'election_contest_id' => $contest->id,
+        'device_group_id' => $group->id,
+        'first_name' => 'Jana',
+        'last_name' => 'Nováková',
+    ]);
+    $manager = app(ElectionCandidateAdmissionManager::class);
+
+    $manager->start($admission);
+    $manager->recordVote($admission, $device, 'A');
+    $manager->stop($admission);
+    $resolvedAdmission = $manager->showResults($admission);
+
+    expect($resolvedAdmission->status)->toBe('accepted')
+        ->and($resolvedAdmission->created_election_candidate_id)->toBeNull();
+
+    $manager->restart($resolvedAdmission);
+
+    expect($contest->candidates()->whereKey($candidate->id)->exists())->toBeTrue();
 });
 
 function admissionFixture(): array

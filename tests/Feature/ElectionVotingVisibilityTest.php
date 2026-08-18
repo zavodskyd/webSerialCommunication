@@ -79,6 +79,45 @@ test('presentation does not expose election votes until results are shown', func
     expect($visibleViewData['roundResults']['candidates'][0]['weighted_total'])->toBe(4321.0);
 });
 
+test('showing candidate admission results resolves and presents the decision and majority', function () {
+    [$voting, $election] = electionVotingForVisibilityTest();
+    $election->update(['quorum_participant_count' => 1]);
+    $contest = $election->contests()->where('key', 'supervisory-committee')->firstOrFail();
+    $device = electionVisibilityDevice($voting, '001', 1);
+    $admission = ElectionCandidateAdmission::query()->create([
+        'election_id' => $election->id,
+        'election_contest_id' => $contest->id,
+        'first_name' => 'Jana',
+        'last_name' => 'Nováková',
+    ]);
+    $manager = app(ElectionCandidateAdmissionManager::class);
+    $manager->start($admission);
+    $manager->recordVote($admission, $device, 'A');
+    $manager->stop($admission);
+
+    Livewire::test(ElectionCandidateAdmissionConsole::class, ['voting' => $voting])
+        ->assertDontSee('Vyhodnotiť')
+        ->call('showAdmissionResults', $admission->id)
+        ->assertHasNoErrors();
+
+    expect($admission->fresh()->status)->toBe('accepted');
+
+    $presentation = app(VotingPresentation::class);
+    $presentation->mount($voting);
+    $view = $presentation->render(
+        app(PresentationRuntimeManager::class),
+        $manager,
+        app(ElectionRoundManager::class),
+    );
+    $viewData = $view->getData();
+    $html = $view->with('voting', $voting)->render();
+
+    expect($viewData['admissionAcceptedDeviceCount'])->toBe(1)
+        ->and($viewData['admissionMajorityThreshold'])->toBe(1)
+        ->and($html)->toContain('Zvolený')
+        ->and($html)->toContain('Nadpolovičná väčšina:');
+});
+
 test('finishing the last candidate automatically shows the round result', function () {
     [$voting, $election] = electionVotingForVisibilityTest(autoShowResults: false);
     $contest = $election->contests()->where('key', 'chairperson')->firstOrFail();

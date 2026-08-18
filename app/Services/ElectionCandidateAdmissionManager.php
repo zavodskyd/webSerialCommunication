@@ -70,25 +70,40 @@ class ElectionCandidateAdmissionManager
     {
         return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
             $admission = ElectionCandidateAdmission::query()->lockForUpdate()->findOrFail($admission->id);
-            if ($admission->status !== 'live') {
-                return $admission;
+            if ($admission->status === 'live') {
+                $admission->update(['status' => 'closed', 'closed_at' => now(), 'results_visible' => true]);
             }
-            $admission->update(['status' => 'closed', 'closed_at' => now(), 'results_visible' => true]);
 
-            return $admission->refresh();
+            return $this->resolve($admission->refresh());
         });
     }
 
     public function restart(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
     {
         return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
-            $admission = ElectionCandidateAdmission::query()->with(['election', 'deviceGroup.ranges'])->lockForUpdate()->findOrFail($admission->id);
+            $admission = ElectionCandidateAdmission::query()->with(['election', 'deviceGroup.ranges', 'createdCandidate'])->lockForUpdate()->findOrFail($admission->id);
             if ($admission->status === 'live') {
                 throw new \InvalidArgumentException('Prebiehajúci návrh najprv zastavte.');
             }
+
+            if ($admission->createdCandidate !== null) {
+                app(ElectionRoundManager::class)->removeCandidateFromLatestDraft(
+                    $admission->contest,
+                    $admission->createdCandidate->id,
+                );
+                $admission->createdCandidate->delete();
+            }
+
             $admission->votes()->delete();
             $this->snapshotEligibleDeviceWeights($admission);
-            $admission->update(['status' => 'live', 'opened_at' => now(), 'closed_at' => null, 'resolved_at' => null, 'results_visible' => false]);
+            $admission->update([
+                'status' => 'live',
+                'created_election_candidate_id' => null,
+                'opened_at' => now(),
+                'closed_at' => null,
+                'resolved_at' => null,
+                'results_visible' => false,
+            ]);
 
             return $admission->refresh();
         });
@@ -96,12 +111,15 @@ class ElectionCandidateAdmissionManager
 
     public function showResults(ElectionCandidateAdmission $admission): ElectionCandidateAdmission
     {
-        if ($admission->status === 'live') {
-            throw new \InvalidArgumentException('Návrh najprv zastavte.');
-        }
-        $admission->update(['results_visible' => true]);
+        return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
+            $admission = ElectionCandidateAdmission::query()->lockForUpdate()->findOrFail($admission->id);
+            if ($admission->status === 'live') {
+                throw new \InvalidArgumentException('Návrh najprv zastavte.');
+            }
+            $admission->update(['results_visible' => true]);
 
-        return $admission->refresh();
+            return $this->resolve($admission->refresh());
+        });
     }
 
     public function recordVote(ElectionCandidateAdmission $admission, Device $device, string $optionKey): ElectionCandidateAdmissionVote
@@ -141,26 +159,41 @@ class ElectionCandidateAdmissionManager
     {
         return DB::transaction(function () use ($admission): ElectionCandidateAdmission {
             $admission = ElectionCandidateAdmission::query()->with('contest')->lockForUpdate()->findOrFail($admission->id);
+            if (in_array($admission->status, ['accepted', 'rejected'], true)) {
+                return $admission;
+            }
             if ($admission->status !== 'closed' || ! $admission->results_visible) {
                 throw new \InvalidArgumentException('Najprv zastavte hlasovanie a zobrazte výsledok.');
             }
             $votes = $admission->votes()->get();
             $yes = $votes->where('option_key', 'A')->sum('weight_snapshot');
-            $majorityBase = $admission->quorum_participant_count_snapshot
-                ?? $admission->eligible_weight_total;
-            $majorityThreshold = floor($majorityBase / 2) + 1;
+            $majorityThreshold = $this->majorityThreshold($admission);
             $accepted = $yes >= $majorityThreshold;
-            $admission->update(['status' => $accepted ? 'accepted' : 'rejected', 'resolved_at' => now()]);
+            $createdCandidateId = null;
             if ($accepted) {
                 $candidate = $admission->contest->candidates()->firstOrCreate(
                     ['first_name' => $admission->first_name, 'last_name' => $admission->last_name],
                     ['status' => 'approved'],
                 );
                 app(ElectionRoundManager::class)->addCandidateToLatestDraft($candidate);
+                $createdCandidateId = $candidate->wasRecentlyCreated ? $candidate->id : null;
             }
+            $admission->update([
+                'status' => $accepted ? 'accepted' : 'rejected',
+                'created_election_candidate_id' => $createdCandidateId,
+                'resolved_at' => now(),
+            ]);
 
             return $admission->refresh();
         });
+    }
+
+    public function majorityThreshold(ElectionCandidateAdmission $admission): int
+    {
+        $majorityBase = $admission->quorum_participant_count_snapshot
+            ?? $admission->eligible_weight_total;
+
+        return (int) floor($majorityBase / 2) + 1;
     }
 
     private function deviceIsInGroup(Device $device, array $ranges): bool

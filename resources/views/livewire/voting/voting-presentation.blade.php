@@ -188,6 +188,13 @@
                                 </div>
                             @endforeach
                         </div>
+                        <p @class([
+                            'mt-10 text-center text-5xl font-bold',
+                            'text-emerald-700' => $admission->status === 'accepted',
+                            'text-rose-700' => $admission->status === 'rejected',
+                        ])>
+                            {{ $admission->status === 'accepted' ? 'Zvolený' : 'Nezvolený' }}
+                        </p>
                     @else
                         <div class="mt-14 space-y-5 text-left text-4xl">
                             <p>A. Za</p>
@@ -203,7 +210,14 @@
                 </p>
                 <p class="text-center text-4xl font-semibold">
                     {{ sprintf('%02d:%02d', intdiv($remaining, 60), $remaining % 60) }}</p>
-                <p class="text-right text-3xl font-semibold">{{ $admission->votes()->count() }}</p>
+                <p class="text-right text-xl font-semibold">
+                    Prijaté zariadenia:
+                    <strong class="text-3xl">{{ $admissionAcceptedDeviceCount }}</strong>
+                    @if ($admission->results_visible)
+                        <span class="ml-5">Nadpolovičná väčšina:</span>
+                        <strong class="text-3xl">{{ $admissionMajorityThreshold }}</strong>
+                    @endif
+                </p>
             </footer>
         </div>
     @elseif ($question)

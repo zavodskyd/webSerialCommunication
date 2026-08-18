@@ -109,6 +109,10 @@ class ElectionCandidateAdmissionConsole extends Component
     {
         $admission = $admissions->showResults($this->admission($admissionId));
         $runtime->activate($this->voting, 'candidate_admission', ['admission_id' => $admission->id]);
+
+        session()->flash('status', $admission->status === 'accepted'
+            ? 'Kandidát bol doplnený do kandidátky.'
+            : 'Kandidát nebol doplnený.');
     }
 
     public function updateAdmissionTime(int $admissionId, int $seconds): void
@@ -141,25 +145,6 @@ class ElectionCandidateAdmissionConsole extends Component
             $runtime->clear();
         }
         $admission->delete();
-    }
-
-    public function resolveAdmission(int $admissionId, ElectionCandidateAdmissionManager $admissions, PresentationRuntimeManager $runtime): void
-    {
-        $admission = ElectionCandidateAdmission::query()
-            ->where('election_id', $this->election->id)
-            ->findOrFail($admissionId);
-
-        $admission = $admissions->resolve($admission);
-        $activeRuntime = $runtime->current();
-
-        if ($activeRuntime->content_type === 'candidate_admission'
-            && (int) ($activeRuntime->context['admission_id'] ?? 0) === $admission->id) {
-            $runtime->clear();
-        }
-
-        session()->flash('status', $admission->status === 'accepted'
-            ? 'Kandidát bol doplnený do kandidátky.'
-            : 'Kandidát nebol doplnený.');
     }
 
     public function render(ElectionCandidateAdmissionManager $admissions, PresentationRuntimeManager $runtime): View

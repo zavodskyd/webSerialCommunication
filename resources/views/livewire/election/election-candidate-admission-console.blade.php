@@ -50,14 +50,11 @@
                             @if (in_array($admission->status, ['open', 'closed']))
                                 <button wire:click="showAdmissionResults({{ $admission->id }})" class="rounded-lg bg-slate-700 px-3 py-2 text-sm font-semibold text-white">Zobraziť výsledok</button>
                                 <button wire:click="restartAdmission({{ $admission->id }})" class="rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white">Reštartovať</button>
-                                @if ($admission->results_visible)
-                                    <button wire:click="resolveAdmission({{ $admission->id }})" wire:confirm="Potvrdiť výsledok a vyhodnotiť doplnenie?" class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white">Vyhodnotiť</button>
-                                @endif
                             @endif
                             <button wire:click="deleteAdmission({{ $admission->id }})" wire:confirm="Vymazať návrh kandidáta?" class="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-200">Vymazať</button>
                         @else
                             <button wire:click="selectAdmission({{ $admission->id }})" class="rounded-lg bg-slate-700 px-3 py-2 text-sm font-semibold text-white">Zobraziť</button>
-                            <button wire:click="restartAdmission({{ $admission->id }})" wire:confirm="Reštart vymaže hlasy tohto návrhu. Pokračovať?" class="rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white">Reštartovať</button>
+                            <button wire:click="restartAdmission({{ $admission->id }})" wire:confirm="Reštart vymaže hlasy aj predchádzajúce vyhodnotenie tohto návrhu. Pokračovať?" class="rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white">Reštartovať</button>
                             <button wire:click="deleteAdmission({{ $admission->id }})" wire:confirm="Vymazať záznam návrhu?" class="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-200">Vymazať</button>
                         @endif
                         <span class="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-700">{{ $admission->status }}</span>

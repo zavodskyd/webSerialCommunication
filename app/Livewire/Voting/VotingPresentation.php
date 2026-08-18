@@ -103,6 +103,8 @@ class VotingPresentation extends Component
             'maxResultValue' => $this->maxResultValue($question),
             'admission' => $admission,
             'admissionResults' => $admission ? $admissions->summarizedResults($admission) : [],
+            'admissionAcceptedDeviceCount' => $admission?->votes()->distinct('device_id')->count('device_id') ?? 0,
+            'admissionMajorityThreshold' => $admission ? $admissions->majorityThreshold($admission) : null,
             'round' => $round,
             'roundResults' => $roundResults,
             'roundSeatLimit' => $calculatedRoundResults['remaining_seats'] ?? null,

@@ -244,7 +244,8 @@ test('user can configure the general majority base separately from the weight he
 
     expect($voting->election->refresh()->weight_one_device_count)->toBe(2)
         ->and($voting->election->quorum_participant_count)->toBe(120)
-        ->and($voting->attendees()->orderBy('device_id')->pluck('weight')->all())->toBe(['1.00', '1.00', '0.00']);
+        ->and($voting->attendees()->count())->toBe(340)
+        ->and($voting->attendees()->orderBy('device_id')->limit(3)->pluck('weight')->all())->toBe(['1.00', '1.00', '0.00']);
 });
 
 test('user can export and import election device weights', function () {

@@ -454,10 +454,10 @@ test('user can bulk assign vote weights by device number range', function () {
         ->where('device_id', $secondDevice->id)
         ->value('weight'))->toBe(7.0);
 
-    expect(VotingAttendee::query()
+    expect((float) VotingAttendee::query()
         ->where('voting_id', $voting->id)
         ->where('device_id', $thirdDevice->id)
-        ->exists())->toBeFalse();
+        ->value('weight'))->toBe(0.0);
 });
 
 test('voting editor orders device weights by numeric device number', function () {

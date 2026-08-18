@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
 use App\Models\VotingQuestion;
+use App\Services\Voting\VotingDeviceRoster;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -69,8 +70,10 @@ class VotingEditor extends Component
     #[Validate('required|integer|min:1|max:999999')]
     public int $bulkDeviceCount = 1;
 
-    public function mount(Voting $voting): void
+    public function mount(Voting $voting, VotingDeviceRoster $deviceRoster): void
     {
+        $deviceRoster->ensure($voting);
+
         $this->voting = $voting;
         $this->fillFromVoting();
         $this->loadQuestions();

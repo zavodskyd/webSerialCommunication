@@ -10,6 +10,8 @@ use App\Models\ElectionContest;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
 use App\Services\ElectionRoundManager;
+use App\Services\ElectionRoundSnapshotRecovery;
+use App\Services\Voting\VotingDeviceRoster;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -75,9 +77,11 @@ class ElectionEditor extends Component
     /** @var list<string> */
     public array $groupNameOptions = ['Hliny', 'Solinky', 'Vlčince', 'Rozptyl/Staré Mesto'];
 
-    public function mount(Voting $voting): void
+    public function mount(Voting $voting, VotingDeviceRoster $deviceRoster): void
     {
         abort_unless($voting->voting_type === 'election', 404);
+
+        $deviceRoster->ensure($voting);
 
         $this->voting = $voting;
         $this->election = $voting->election()->firstOrFail();
@@ -277,7 +281,7 @@ class ElectionEditor extends Component
         session()->flash('status', 'Skupiny zariadení boli uložené.');
     }
 
-    public function saveVotingWeights(): void
+    public function saveVotingWeights(ElectionRoundSnapshotRecovery $snapshotRecovery): void
     {
         $validated = $this->validate([
             'weightOneDeviceCount' => ['required', 'integer', 'min:1', 'max:9999'],
@@ -299,6 +303,8 @@ class ElectionEditor extends Component
                 );
             }
         });
+
+        $snapshotRecovery->recoverEmptyLiveRounds($this->voting);
 
         $this->election->refresh();
         $this->loadDeviceWeights();

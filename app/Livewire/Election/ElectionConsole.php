@@ -284,7 +284,7 @@ class ElectionConsole extends Component
         $rounds->close($round);
         $this->candidateId = null;
         $this->remainingSeconds = 0;
-        $this->resultsVisible = (bool) $this->voting->auto_show_results;
+        $this->resultsVisible = true;
         $this->voting->update(['status' => 'draft']);
         $this->persistRuntimeState();
         $this->activatePresentation($runtime);

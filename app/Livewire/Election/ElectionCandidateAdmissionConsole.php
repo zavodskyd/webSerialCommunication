@@ -9,6 +9,7 @@ use App\Models\ElectionContest;
 use App\Models\Voting;
 use App\Services\ElectionCandidateAdmissionManager;
 use App\Support\PresentationRuntimeManager;
+use App\Support\SerialAgentClient;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
 
@@ -62,15 +63,17 @@ class ElectionCandidateAdmissionConsole extends Component
         session()->flash('status', 'Návrh kandidáta bol pridaný.');
     }
 
-    public function startAdmission(int $admissionId, ElectionCandidateAdmissionManager $admissions, PresentationRuntimeManager $runtime): void
+    public function startAdmission(int $admissionId, ElectionCandidateAdmissionManager $admissions, PresentationRuntimeManager $runtime, SerialAgentClient $serialAgent): void
     {
         $admission = $this->admission($admissionId);
         $admissions->start($admission);
         $runtime->activate($this->voting, 'candidate_admission', ['admission_id' => $admission->id]);
+        $serialAgent->command('start');
     }
 
-    public function stopAdmission(int $admissionId, ElectionCandidateAdmissionManager $admissions): void
+    public function stopAdmission(int $admissionId, ElectionCandidateAdmissionManager $admissions, SerialAgentClient $serialAgent): void
     {
+        $serialAgent->command('stop');
         $admissions->stop($this->admission($admissionId));
     }
 
@@ -80,7 +83,7 @@ class ElectionCandidateAdmissionConsole extends Component
         $runtime->activate($this->voting, 'candidate_admission', ['admission_id' => $admission->id]);
     }
 
-    public function liveTick(ElectionCandidateAdmissionManager $admissions): void
+    public function liveTick(ElectionCandidateAdmissionManager $admissions, SerialAgentClient $serialAgent): void
     {
         $admission = ElectionCandidateAdmission::query()
             ->where('election_id', $this->election->id)
@@ -90,14 +93,16 @@ class ElectionCandidateAdmissionConsole extends Component
         if ($admission !== null
             && $admission->opened_at !== null
             && now()->greaterThanOrEqualTo($admission->opened_at->copy()->addSeconds($admission->response_time_seconds))) {
+            $serialAgent->command('stop');
             $admissions->finish($admission);
         }
     }
 
-    public function restartAdmission(int $admissionId, ElectionCandidateAdmissionManager $admissions, PresentationRuntimeManager $runtime): void
+    public function restartAdmission(int $admissionId, ElectionCandidateAdmissionManager $admissions, PresentationRuntimeManager $runtime, SerialAgentClient $serialAgent): void
     {
         $admission = $admissions->restart($this->admission($admissionId));
         $runtime->activate($this->voting, 'candidate_admission', ['admission_id' => $admission->id]);
+        $serialAgent->command('start');
     }
 
     public function showAdmissionResults(int $admissionId, ElectionCandidateAdmissionManager $admissions, PresentationRuntimeManager $runtime): void

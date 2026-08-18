@@ -16,6 +16,7 @@
         "mcp-development",
         "pest-testing",
         "tailwindcss-development",
-        "deploying-laravel-cloud"
+        "deploying-laravel-cloud",
+        "laravel-specialist"
     ]
 }

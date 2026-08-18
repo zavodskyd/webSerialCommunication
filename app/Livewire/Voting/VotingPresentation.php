@@ -60,16 +60,23 @@ class VotingPresentation extends Component
 
         $question = $this->currentQuestion();
 
-        $roundResults = $round ? $rounds->results($round) : null;
+        $calculatedRoundResults = $round ? $rounds->results($round) : null;
         $roundResultsVisible = $round?->status === 'closed' && (bool) $this->voting->runtime_results_visible;
-        $displayRoundCandidates = collect($roundResults['candidates'] ?? [])
+        $roundResults = $roundResultsVisible ? $calculatedRoundResults : null;
+        $displayRoundCandidates = collect($calculatedRoundResults['candidates'] ?? [])
             ->map(fn (array $candidate): array => [...$candidate, 'prior_elected' => false]);
 
         if ($round !== null && ! $roundResultsVisible) {
-            $displayRoundCandidates = $displayRoundCandidates->sortBy([
-                ['last_name', 'asc'],
-                ['first_name', 'asc'],
-            ])->values();
+            $displayRoundCandidates = $displayRoundCandidates
+                ->map(fn (array $candidate): array => [
+                    ...$candidate,
+                    'weighted_total' => null,
+                    'elected' => false,
+                ])
+                ->sortBy([
+                    ['last_name', 'asc'],
+                    ['first_name', 'asc'],
+                ])->values();
         }
 
         if ($round !== null && $roundResultsVisible && $round->round_number > 1) {

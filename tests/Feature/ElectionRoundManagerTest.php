@@ -227,6 +227,62 @@ test('a successor round includes candidates added after the preceding round', fu
     expect($runoff->candidates()->pluck('last_name')->all())->toBe(['Adamová', 'Bérová', 'Dudová']);
 });
 
+test('elected and eliminated candidates never return while genuinely new candidates join a successor round', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create([
+        'voting_id' => $voting->id,
+        'quorum_participant_count' => 100,
+    ]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->where('key', 'board-solinky')->firstOrFail();
+    $candidates = collect([
+        ['first_name' => 'Anna', 'last_name' => 'Adamová'],
+        ['first_name' => 'Bea', 'last_name' => 'Bérová'],
+        ['first_name' => 'Cyril', 'last_name' => 'Cibulík'],
+        ['first_name' => 'Dana', 'last_name' => 'Dudová'],
+        ['first_name' => 'Eva', 'last_name' => 'Eliášová'],
+    ])->map(fn (array $candidate) => $contest->candidates()->create($candidate));
+
+    $devices = collect([
+        electionRoundVoter($voting, '401', 60),
+        electionRoundVoter($voting, '402', 40),
+        electionRoundVoter($voting, '403', 30),
+        electionRoundVoter($voting, '404', 20),
+        electionRoundVoter($voting, '405', 10),
+    ]);
+    $manager = app(ElectionRoundManager::class);
+    $firstRound = openElectionRound($manager, $contest);
+
+    $firstRound->candidates()->get()->each(function ($candidate, int $index) use ($devices, $firstRound): void {
+        $firstRound->votes()->create([
+            'election_round_candidate_id' => $candidate->id,
+            'device_id' => $devices[$index]->id,
+            'weight_snapshot' => [60, 40, 30, 20, 10][$index],
+            'voted_at' => now(),
+        ]);
+    });
+    $manager->close($firstRound);
+
+    $secondRound = $contest->rounds()->where('round_number', 2)->firstOrFail();
+    $manager->open($secondRound);
+    $secondRound->candidates()->get()->each(function ($candidate, int $index) use ($devices, $secondRound): void {
+        $secondRound->votes()->create([
+            'election_round_candidate_id' => $candidate->id,
+            'device_id' => $devices[$index + 1]->id,
+            'weight_snapshot' => [40, 30, 20][$index],
+            'voted_at' => now(),
+        ]);
+    });
+    $newCandidate = $contest->candidates()->create(['first_name' => 'Filip', 'last_name' => 'Fialka']);
+
+    $manager->close($secondRound);
+    $thirdRound = $contest->rounds()->where('round_number', 3)->firstOrFail();
+    $thirdRoundCandidateIds = $thirdRound->candidates()->pluck('election_candidate_id')->all();
+
+    expect($thirdRoundCandidateIds)->toBe([$candidates[1]->id, $candidates[2]->id, $newCandidate->id]);
+    expect($thirdRoundCandidateIds)->not->toContain($candidates[0]->id, $candidates[3]->id, $candidates[4]->id);
+});
+
 test('an opened round keeps individual device weights after global weight changes', function () {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
     $election = Election::query()->create([

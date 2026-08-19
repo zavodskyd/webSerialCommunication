@@ -350,12 +350,14 @@ class ElectionRoundManager
             'response_time_seconds' => $sourceRound->response_time_seconds,
         ]);
 
-        $sourceCandidateIds = $sourceRound->candidates
-            ->map(fn (ElectionRoundCandidate $candidate): int => (int) $candidate->election_candidate_id)
-            ->filter()
+        $knownCandidateIds = ElectionRoundCandidate::query()
+            ->whereHas('round', fn ($query) => $query->where('election_contest_id', $contest->id))
+            ->whereNotNull('election_candidate_id')
+            ->pluck('election_candidate_id')
+            ->map(fn ($candidateId): int => (int) $candidateId)
             ->all();
         $newCandidates = $contest->candidates
-            ->reject(fn (ElectionCandidate $candidate): bool => in_array($candidate->id, $sourceCandidateIds, true));
+            ->reject(fn (ElectionCandidate $candidate): bool => in_array($candidate->id, $knownCandidateIds, true));
 
         $roundCandidates = collect($candidates)
             ->map(fn (ElectionRoundCandidate $candidate): array => [

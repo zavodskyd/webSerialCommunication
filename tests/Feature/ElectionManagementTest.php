@@ -145,6 +145,22 @@ test('user can manage direct candidates and non-overlapping device groups', func
     expect($election->deviceGroups()->orderBy('sort_order')->pluck('quorum_participant_count')->all())->toBe([120, 80]);
 });
 
+test('candidate inputs keep stable Livewire identities across editor refreshes', function () {
+    $voting = createElectionVoting();
+    $contest = $voting->election->contests()->firstOrFail();
+    $candidate = $contest->candidates()->create([
+        'first_name' => 'Jana',
+        'last_name' => 'Nováková',
+        'status' => 'approved',
+    ]);
+
+    Livewire::test(ElectionEditor::class, ['voting' => $voting])
+        ->assertSeeHtml('wire:key="candidate-'.$candidate->id.'-first-name"')
+        ->assertSeeHtml('wire:key="candidate-'.$candidate->id.'-last-name"')
+        ->assertSeeHtml('wire:key="candidate-draft-'.$contest->id.'-first-name"')
+        ->assertSeeHtml('wire:key="candidate-draft-'.$contest->id.'-last-name"');
+});
+
 test('manual candidate changes synchronize the latest draft round only', function () {
     $voting = createElectionVoting();
     $contest = $voting->election->contests()->firstOrFail();

@@ -111,6 +111,39 @@ test('the election console does not advance while the serial queue is not draine
     expect($round->fresh()->status)->toBe('draft');
 });
 
+test('the election console closes the round after the last candidate without a server error', function () {
+    $client = Mockery::mock(SerialAgentClient::class);
+    $client->shouldReceive('health')->andReturn(['ok' => true, 'connected' => true])->byDefault();
+    $client->shouldReceive('stopAndDrain')->once()->andReturn(['ok' => true, 'drained' => true, 'collecting' => false, 'queued_frames' => 0]);
+    app()->instance(SerialAgentClient::class, $client);
+
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create([
+        'voting_id' => $voting->id,
+        'weight_one_device_count' => 1,
+        'quorum_participant_count' => 1,
+    ]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->firstOrFail();
+    $contest->candidates()->create(['first_name' => 'Anna', 'last_name' => 'Adamová']);
+
+    $component = Livewire::test(ElectionConsole::class, ['voting' => $voting])
+        ->call('createRound');
+    $round = $contest->rounds()->firstOrFail();
+    $round->update(['status' => 'live', 'opened_at' => now()]);
+
+    $component->set('collectorEnabled', true)
+        ->call('stopRoundViaHelper')
+        ->assertHasNoErrors()
+        ->assertSet('candidateId', null)
+        ->assertSet('collectorEnabled', false)
+        ->assertSet('timerRunning', false)
+        ->assertSet('resultsVisible', true);
+
+    expect($round->fresh()->status)->toBe('closed')
+        ->and($voting->fresh()->status)->toBe('draft');
+});
+
 test('the manual result action remains available while the result is already displayed', function () {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
     $election = Election::query()->create(['voting_id' => $voting->id]);

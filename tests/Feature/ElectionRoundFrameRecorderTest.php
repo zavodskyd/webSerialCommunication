@@ -101,7 +101,7 @@ test('a round serial frame is rejected while the candidate collector is stopped'
     expect($round->votes()->count())->toBe(0);
 });
 
-test('election presentation includes the adaptive no-scroll candidate table', function () {
+test('election presentation aligns compact result headers and rows to the same four columns', function () {
     [$round] = activeRoundFixture(8);
 
     $this->get(route('votings.presentation', $round->contest->election->voting))
@@ -109,8 +109,12 @@ test('election presentation includes the adaptive no-scroll candidate table', fu
         ->assertSee('data-election-candidate-table', false)
         ->assertSee('grid-flow-col', false)
         ->assertSee('ResizeObserver', false)
-        ->assertSee('grid-cols-[5rem_1fr_12rem_10rem]', false)
-        ->assertDontSee('Kandidátka · poradie, meno, hlasy a stav');
+        ->assertSee("'--candidate-row-columns'", false)
+        ->assertSee("gridTemplateColumns: 'var(--candidate-row-columns)'", false)
+        ->assertSee('style="grid-template-columns: var(--candidate-row-columns)"', false)
+        ->assertSee('whitespace-nowrap text-right', false)
+        ->assertSeeInOrder(['Por.', 'Kandidát', 'Hlasy', 'Stav'])
+        ->assertDontSee('grid-cols-[2rem_minmax(0,1fr)_4rem]', false);
 });
 
 test('election presentation keeps the original row layout below the compacting threshold', function () {
@@ -119,7 +123,7 @@ test('election presentation keeps the original row layout below the compacting t
     $this->get(route('votings.presentation', $round->contest->election->voting))
         ->assertSuccessful()
         ->assertSee('compact: false', false)
-        ->assertSee('grid-cols-[5rem_1fr_12rem_10rem]', false)
+        ->assertSee("'3rem minmax(0, 1fr) 7rem 9rem'", false)
         ->assertSee('flex h-36 w-96 items-center justify-center', false)
         ->assertSee('flex min-h-36 flex-1 flex-col items-start justify-center', false);
 });

@@ -87,13 +87,31 @@
                             this.observer?.disconnect();
                         },
                     }"
+                    :style="{
+                        '--candidate-row-columns': columns >= 3
+                            ? '2rem minmax(0, 1fr) 4rem 7rem'
+                            : columns === 2
+                                ? '2.5rem minmax(0, 1fr) 5rem 8rem'
+                                : '3rem minmax(0, 1fr) 7rem 9rem',
+                    }"
                     data-election-candidate-table
                     @class([
                         'flex min-h-0 flex-col overflow-hidden' => $candidateCount >= 8,
                     ])
                 >
-                    <div class="grid grid-cols-[5rem_1fr_12rem_10rem] gap-4 border-b pb-3 text-xl font-semibold text-slate-500">
-                        <span>Por.</span><span>Kandidát</span><span>Hlasy</span><span>Stav</span>
+                    <div
+                        class="grid gap-3 border-b px-3 pb-3 text-xl font-semibold text-slate-500"
+                        :style="{
+                            width: compact && columns > 1
+                                ? `calc((100% - ${(columns - 1) * 1.5}rem) / ${columns})`
+                                : '100%',
+                            gridTemplateColumns: 'var(--candidate-row-columns)',
+                        }"
+                    >
+                        <span>Por.</span>
+                        <span>Kandidát</span>
+                        <span class="text-right">Hlasy</span>
+                        <span class="text-right">Stav</span>
                     </div>
                     <div
                         x-ref="candidateRows"
@@ -109,21 +127,23 @@
                                 $isCurrentWinner = $roundResultsVisible && $candidate['elected'];
                                 $isPriorWinner = $roundResultsVisible && $candidate['prior_elected'];
                             @endphp
-                            <div wire:key="election-round-candidate-{{ $round->id }}-{{ $candidate['id'] }}-{{ $candidate['prior_elected'] ? 'prior' : 'current' }}" @class([
+                            <div wire:key="election-round-candidate-{{ $round->id }}-{{ $candidate['id'] }}-{{ $candidate['prior_elected'] ? 'prior' : 'current' }}"
+                                style="grid-template-columns: var(--candidate-row-columns)"
+                                @class([
                                 'grid min-h-0 items-center gap-3 overflow-hidden border-b px-3 transition-colors',
                                 'bg-emerald-100' => $isActiveCandidate || $isCurrentWinner,
                                 'bg-amber-100' => $isPriorWinner && ! $isCurrentWinner,
                             ])
                                 :class="{
-                                    'grid-cols-[2rem_minmax(0,1fr)_4rem] py-1 text-base': compact && (columns >= 3 || rows >= 9),
-                                    'grid-cols-[2.5rem_minmax(0,1fr)_5rem] py-2 text-xl': compact && (columns === 2 || rows >= 6),
-                                    'grid-cols-[3rem_minmax(0,1fr)_7rem_7rem] py-3 text-2xl': !compact || (columns === 1 && rows < 6),
+                                    'py-1 text-base': compact && (columns >= 3 || rows >= 9),
+                                    'py-2 text-xl': compact && (columns === 2 || rows >= 6),
+                                    'py-3 text-2xl': !compact || (columns === 1 && rows < 6),
                                 }"
                             >
                                 <span>{{ $index + 1 }}</span>
                                 <span class="truncate">{{ $candidate['first_name'] }} {{ $candidate['last_name'] }}</span>
-                                <strong>{{ $candidate['weighted_total'] }}</strong>
-                                <span x-show="!compact || (columns === 1 && rows < 6)">{{ $isPriorWinner ? 'Zvolený skôr' : ($isCurrentWinner ? 'Zvolený' : '') }}</span>
+                                <strong class="text-right tabular-nums">{{ $candidate['weighted_total'] }}</strong>
+                                <span class="whitespace-nowrap text-right" :class="compact ? 'text-base' : 'text-xl'">{{ $isPriorWinner ? 'Zvolený skôr' : ($isCurrentWinner ? 'Zvolený' : '') }}</span>
                             </div>
                         @endforeach
                     </div>

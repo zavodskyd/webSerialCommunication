@@ -147,8 +147,8 @@ test('election presentation shows the remaining time in its info panel', functio
         ->assertSuccessful()
         ->assertSee('00:29')
         ->assertSee('min-w-64 items-center justify-center px-6 py-3 text-5xl font-semibold', false)
-        ->assertSee('Zariadení s platným hlasom:')
-        ->assertDontSee('Väčšina:')
+        ->assertSee('Nadpolovičná väčšina:')
+        ->assertDontSee('Zariadení s platným hlasom:')
         ->assertDontSee('Čaká sa na spustenie hlasovania');
 });
 

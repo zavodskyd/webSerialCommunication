@@ -61,22 +61,28 @@ test('presentation does not expose election votes until results are shown', func
         $rounds,
     );
     $hiddenViewData = $hiddenView->getData();
-    $hiddenView->with('voting', $voting)->render();
+    $hiddenHtml = $hiddenView->with('voting', $voting)->render();
 
     expect($hiddenViewData['roundResults'])->toBeNull()
         ->and($hiddenViewData['displayRoundCandidates'][0]['weighted_total'])->toBeNull()
-        ->and($hiddenViewData['roundAcceptedDeviceCount'])->toBe(1);
+        ->and($hiddenViewData['roundMajorityThreshold'])->toBe(51.0)
+        ->and($hiddenHtml)->toContain("wire:key=\"election-round-candidates-{$round->id}-voting\"")
+        ->and($hiddenHtml)->toContain('Nadpolovičná väčšina:')
+        ->and($hiddenHtml)->not->toContain('Zariadení s platným hlasom:');
 
     $round->update(['status' => 'closed', 'closed_at' => now()]);
     $voting->update(['runtime_results_visible' => true]);
 
-    $visibleViewData = $presentation->render(
+    $visibleView = $presentation->render(
         app(PresentationRuntimeManager::class),
         app(ElectionCandidateAdmissionManager::class),
         $rounds,
-    )->getData();
+    );
+    $visibleViewData = $visibleView->getData();
+    $visibleHtml = $visibleView->with('voting', $voting)->render();
 
-    expect($visibleViewData['roundResults']['candidates'][0]['weighted_total'])->toBe(4321.0);
+    expect($visibleViewData['roundResults']['candidates'][0]['weighted_total'])->toBe(4321.0)
+        ->and($visibleHtml)->toContain("wire:key=\"election-round-candidates-{$round->id}-results\"");
 });
 
 test('showing candidate admission results resolves and presents the decision and majority', function () {

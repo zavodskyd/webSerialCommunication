@@ -51,6 +51,7 @@
                     $timerIsWarning = $timerIsActive && $voting->runtime_remaining_seconds <= 5;
                 @endphp
                 <div
+                    wire:key="election-round-candidates-{{ $round->id }}-{{ $roundResultsVisible ? 'results' : 'voting' }}"
                     x-data="{
                         candidateCount: {{ $candidateCount }},
                         compact: {{ $candidateCount >= 8 ? 'true' : 'false' }},
@@ -108,7 +109,7 @@
                                 $isCurrentWinner = $roundResultsVisible && $candidate['elected'];
                                 $isPriorWinner = $roundResultsVisible && $candidate['prior_elected'];
                             @endphp
-                            <div @class([
+                            <div wire:key="election-round-candidate-{{ $round->id }}-{{ $candidate['id'] }}-{{ $candidate['prior_elected'] ? 'prior' : 'current' }}" @class([
                                 'grid min-h-0 items-center gap-3 overflow-hidden border-b px-3 transition-colors',
                                 'bg-emerald-100' => $isActiveCandidate || $isCurrentWinner,
                                 'bg-amber-100' => $isPriorWinner && ! $isCurrentWinner,
@@ -144,7 +145,7 @@
                         </p>
                     </div>
                     <div class="text-xl text-slate-500">
-                        Zariadení s platným hlasom: <strong class="text-3xl font-bold text-slate-950">{{ $roundAcceptedDeviceCount }}</strong>
+                        Nadpolovičná väčšina: <strong class="text-3xl font-bold text-slate-950">{{ $roundMajorityThreshold }}</strong>
                     </div>
                 </aside>
             </main>

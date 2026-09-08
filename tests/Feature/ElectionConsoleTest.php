@@ -3,6 +3,7 @@
 use App\Livewire\Election\ElectionConsole;
 use App\Models\Election;
 use App\Models\Voting;
+use App\Services\ElectionRoundManager;
 use App\Support\SerialAgentClient;
 use Livewire\Livewire;
 
@@ -17,6 +18,27 @@ test('the election console links back to its editor', function () {
         ->assertSeeHtml('href="'.route('elections.edit', $voting).'"')
         ->assertSeeHtml('href="'.route('votings.presentation', $voting).'"')
         ->assertSeeHtml('target="_blank"');
+});
+
+test('the election console hides the majority until the round snapshots its basis', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'quorum_participant_count' => 92]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->firstOrFail();
+    $contest->candidates()->create(['first_name' => 'Anna', 'last_name' => 'Adamová']);
+
+    $component = Livewire::test(ElectionConsole::class, ['voting' => $voting])
+        ->call('createRound');
+    $round = $contest->rounds()->firstOrFail();
+
+    expect($component->html())->toMatch('/data-election-majority\\s+hidden/');
+
+    app(ElectionRoundManager::class)->open($round);
+    $component->refresh();
+
+    expect($component->html())
+        ->not->toMatch('/data-election-majority\\s+hidden/')
+        ->toContain('väčšina 47');
 });
 
 test('the election console automatically selects the first candidate of a created round', function () {

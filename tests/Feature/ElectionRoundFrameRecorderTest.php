@@ -139,6 +139,27 @@ test('election presentation tells voters the maximum number of candidates they c
         ->assertDontSee('Mandátov:');
 });
 
+test('election presentation hides the majority until the round snapshots its basis', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'quorum_participant_count' => 92]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->firstOrFail();
+    $contest->candidates()->create(['first_name' => 'Anna', 'last_name' => 'Adamová']);
+    $round = app(ElectionRoundManager::class)->create($contest);
+    app(PresentationRuntimeManager::class)->activate($voting, 'election_round', ['round_id' => $round->id]);
+
+    $draftResponse = $this->get(route('votings.presentation', $voting));
+
+    $draftResponse->assertSuccessful();
+    expect($draftResponse->getContent())->toMatch('/data-election-majority[^>]*hidden/');
+
+    app(ElectionRoundManager::class)->open($round);
+    $liveResponse = $this->get(route('votings.presentation', $voting));
+
+    $liveResponse->assertSuccessful()->assertSee('Nadpolovičná väčšina:')->assertSee('47');
+    expect($liveResponse->getContent())->not->toMatch('/data-election-majority[^>]*hidden/');
+});
+
 test('election presentation shows the remaining time in its info panel', function () {
     [$round] = activeRoundFixture();
     $round->contest->election->voting->update([

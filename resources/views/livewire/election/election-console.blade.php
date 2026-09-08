@@ -72,7 +72,12 @@
                 </div>
 
                 <div class="mt-4 flex flex-wrap items-center gap-4 text-slate-700">
-                    <p>Kolo {{ $round->round_number }} · {{ $round->status }} · väčšina {{ $results['majority_threshold'] }}</p>
+                    <p>
+                        Kolo {{ $round->round_number }} · {{ $round->status }}
+                        <span data-election-majority @if ($round->quorum_participant_count_snapshot === null) hidden @endif>
+                            · väčšina {{ $results['majority_threshold'] }}
+                        </span>
+                    </p>
                     <p class="rounded-lg bg-slate-900 px-3 py-2 text-xl font-bold tabular-nums text-white">
                         {{ sprintf('%02d:%02d', intdiv($remainingSeconds, 60), $remainingSeconds % 60) }}
                     </p>

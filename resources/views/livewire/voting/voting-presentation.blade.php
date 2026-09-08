@@ -164,7 +164,11 @@
                             kandidátov.
                         </p>
                     </div>
-                    <div class="text-xl text-slate-500">
+                    <div
+                        data-election-majority
+                        class="text-xl text-slate-500"
+                        @if ($round->quorum_participant_count_snapshot === null) hidden @endif
+                    >
                         Nadpolovičná väčšina: <strong class="text-3xl font-bold text-slate-950">{{ $roundMajorityThreshold }}</strong>
                     </div>
                 </aside>

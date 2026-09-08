@@ -428,6 +428,8 @@ class ElectionEditor extends Component
                     'name' => $contest->name,
                     'seat_count' => $contest->seat_count,
                     'candidates' => $contest->candidates
+                        ->sortBy('id')
+                        ->values()
                         ->map(fn (ElectionCandidate $candidate): array => [
                             'id' => $candidate->id,
                             'first_name' => $candidate->first_name,

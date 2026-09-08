@@ -145,20 +145,32 @@ test('user can manage direct candidates and non-overlapping device groups', func
     expect($election->deviceGroups()->orderBy('sort_order')->pluck('quorum_participant_count')->all())->toBe([120, 80]);
 });
 
-test('candidate inputs keep stable Livewire identities across editor refreshes', function () {
+test('candidate rows keep stable identities when a name change alters alphabetical order', function () {
     $voting = createElectionVoting();
     $contest = $voting->election->contests()->firstOrFail();
-    $candidate = $contest->candidates()->create([
-        'first_name' => 'Jana',
-        'last_name' => 'Nováková',
+    $firstCandidate = $contest->candidates()->create([
+        'first_name' => 'Meno',
+        'last_name' => '1',
+        'status' => 'approved',
+    ]);
+    $secondCandidate = $contest->candidates()->create([
+        'first_name' => 'Meno',
+        'last_name' => '2',
         'status' => 'approved',
     ]);
 
-    Livewire::test(ElectionEditor::class, ['voting' => $voting])
-        ->assertSeeHtml('wire:key="candidate-'.$candidate->id.'-first-name"')
-        ->assertSeeHtml('wire:key="candidate-'.$candidate->id.'-last-name"')
-        ->assertSeeHtml('wire:key="candidate-draft-'.$contest->id.'-first-name"')
-        ->assertSeeHtml('wire:key="candidate-draft-'.$contest->id.'-last-name"');
+    $component = Livewire::test(ElectionEditor::class, ['voting' => $voting]);
+    $contestRows = collect($component->get('contestRows'));
+    $contestIndex = $contestRows->search(fn (array $row): bool => $row['id'] === $contest->id);
+
+    $component
+        ->set("contestRows.{$contestIndex}.candidates.0.last_name", 'Test1')
+        ->call('saveCandidate', $firstCandidate->id)
+        ->assertHasNoErrors()
+        ->assertSet("contestRows.{$contestIndex}.candidates.0.id", $firstCandidate->id)
+        ->assertSet("contestRows.{$contestIndex}.candidates.0.last_name", 'Test1')
+        ->assertSet("contestRows.{$contestIndex}.candidates.1.id", $secondCandidate->id)
+        ->assertSet("contestRows.{$contestIndex}.candidates.1.last_name", '2');
 });
 
 test('manual candidate changes synchronize the latest draft round only', function () {

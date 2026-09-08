@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Native\Desktop\Facades\ChildProcess;
 
@@ -23,31 +24,33 @@ class StartupCoordinator
             fn (): bool => $this->databaseBootstrapper->hasDatabaseSchema()
         );
 
-        $shouldRunMigrations = ! $hasDatabaseSchema
-            || $this->state->lastStartedVersion() !== $version;
+        $isNewBuildVersion = $this->state->lastStartedVersion() !== $version;
 
-        if ($shouldRunMigrations) {
-            if ($hasDatabaseSchema) {
-                $this->runStep(
-                    'backup-database-before-migrations',
-                    fn (): ?string => $this->databaseBootstrapper->backupBeforeMigrations($version)
-                );
-            } else {
-                $this->logStep(
-                    'backup-database-before-migrations',
-                    'ok',
-                    'Skipped because the database schema does not exist yet.'
-                );
-            }
+        if ($isNewBuildVersion) {
+            $this->runStep('clear-derived-caches', fn (): bool => $this->clearDerivedCaches());
+        } else {
+            $this->logStep('clear-derived-caches', 'ok', 'Skipped for unchanged build version.');
+        }
 
+        if ($hasDatabaseSchema && $isNewBuildVersion) {
             $this->runStep(
-                'maybe-run-migrations',
-                fn (): bool => $this->databaseBootstrapper->runPendingMigrations()
+                'backup-database-before-migrations',
+                fn (): ?string => $this->databaseBootstrapper->backupBeforeMigrations($version)
+            );
+        } elseif (! $hasDatabaseSchema) {
+            $this->logStep(
+                'backup-database-before-migrations',
+                'ok',
+                'Skipped because the database schema does not exist yet.'
             );
         } else {
             $this->logStep('backup-database-before-migrations', 'ok', 'Skipped for unchanged build version.');
-            $this->logStep('maybe-run-migrations', 'ok', 'Skipped for unchanged build version.');
         }
+
+        $this->runStep(
+            'maybe-run-migrations',
+            fn (): bool => $this->databaseBootstrapper->runPendingMigrations()
+        );
 
         $this->runStep('start-rust-agent', fn (): bool => $this->startRustSerialAgent());
         $this->runStep('start-laravel-serial-bridge', fn (): bool => $this->startLaravelSerialBridge());
@@ -76,6 +79,19 @@ class StartupCoordinator
 
             throw $exception;
         }
+    }
+
+    private function clearDerivedCaches(): bool
+    {
+        foreach (['view:clear', 'config:clear', 'route:clear', 'event:clear', 'clear-compiled'] as $command) {
+            $exitCode = Artisan::call($command);
+
+            if ($exitCode !== 0) {
+                throw new \RuntimeException("Failed to clear derived Laravel cache using [{$command}].");
+            }
+        }
+
+        return true;
     }
 
     private function startRustSerialAgent(): bool

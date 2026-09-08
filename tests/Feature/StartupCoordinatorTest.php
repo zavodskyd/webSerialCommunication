@@ -5,9 +5,19 @@ use App\Support\NativeDatabaseBootstrapper;
 use App\Support\NativeStartupState;
 use App\Support\SerialAgentTokens;
 use App\Support\StartupCoordinator;
+use Illuminate\Support\Facades\Artisan;
 use Native\Desktop\Facades\ChildProcess;
 
 beforeEach(function () {
+    $this->artisanCommands = [];
+    Artisan::shouldReceive('call')
+        ->andReturnUsing(function (string $command): int {
+            $this->artisanCommands[] = $command;
+
+            return 0;
+        })
+        ->byDefault();
+
     config(['serial.driver' => 'test-disabled']);
 
     $this->startupStatePath = app(NativeStartupState::class)->path();
@@ -55,17 +65,18 @@ test('startup state records the last completed progress step', function () {
         ->and($state['current_status'])->toBe('ok');
 });
 
-test('unchanged build version skips backup and migrations', function () {
+test('unchanged build version skips backup but still checks for pending migrations', function () {
     app(NativeStartupState::class)->markSuccessful('2026.06.05-test');
 
     $bootstrapper = $this->mock(NativeDatabaseBootstrapper::class);
     $bootstrapper->shouldReceive('hasDatabaseSchema')->once()->andReturnTrue();
     $bootstrapper->shouldReceive('backupBeforeMigrations')->never();
-    $bootstrapper->shouldReceive('runPendingMigrations')->never();
+    $bootstrapper->shouldReceive('runPendingMigrations')->once()->andReturnTrue();
 
     app(StartupCoordinator::class)->run();
 
-    expect(app(NativeStartupState::class)->lastStartedVersion())->toBe('2026.06.05-test');
+    expect($this->artisanCommands)->toBe([])
+        ->and(app(NativeStartupState::class)->lastStartedVersion())->toBe('2026.06.05-test');
 });
 
 test('changed build version backs up existing data before migrations', function () {
@@ -81,7 +92,13 @@ test('changed build version backs up existing data before migrations', function 
 
     app(StartupCoordinator::class)->run();
 
-    expect(app(NativeStartupState::class)->lastStartedVersion())->toBe('2026.06.05-test');
+    expect($this->artisanCommands)->toBe([
+        'view:clear',
+        'config:clear',
+        'route:clear',
+        'event:clear',
+        'clear-compiled',
+    ])->and(app(NativeStartupState::class)->lastStartedVersion())->toBe('2026.06.05-test');
 });
 
 test('backup failure prevents migrations and records the failed step', function () {

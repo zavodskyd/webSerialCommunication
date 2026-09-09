@@ -10,7 +10,10 @@ use App\Models\Voting;
 use App\Services\ElectionRoundManager;
 use App\Support\PresentationRuntimeManager;
 use App\Support\SerialAgentClient;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 
 class ElectionConsole extends Component
@@ -281,31 +284,108 @@ class ElectionConsole extends Component
 
     private function finishCurrentCandidate(ElectionRoundManager $rounds, PresentationRuntimeManager $runtime, ?int $remainingSeconds = null): void
     {
-        $round = $this->round();
-        if ($remainingSeconds !== null) {
-            $this->remainingSeconds = max(0, $remainingSeconds);
-        }
+        $expectedRoundId = $this->roundId;
+        $expectedCandidateId = $this->candidateId;
 
-        $nextCandidate = $this->nextCandidate($round);
-        $this->timerRunning = false;
-        $this->collectorEnabled = false;
-
-        if ($nextCandidate !== null) {
-            $this->candidateId = $nextCandidate->id;
-            $this->resetCandidateState($round);
-            $this->persistRuntimeState();
-            $this->activatePresentation($runtime);
-
+        if ($expectedRoundId === null || $expectedCandidateId === null) {
             return;
         }
 
-        $rounds->close($round);
-        $this->candidateId = null;
-        $this->remainingSeconds = 0;
-        $this->resultsVisible = true;
-        $this->voting->update(['status' => 'draft']);
-        $this->persistRuntimeState();
-        $this->activatePresentation($runtime);
+        $lock = Cache::store('file')->lock("election-round-finalization:{$expectedRoundId}", 15);
+
+        try {
+            $lock->block(2);
+        } catch (LockTimeoutException) {
+            return;
+        }
+
+        try {
+            $presentation = $runtime->current();
+            $context = $presentation->context;
+            if (
+                $presentation->voting_id !== $this->voting->id
+                || $presentation->content_type !== 'election_round'
+                || (int) ($context['round_id'] ?? 0) !== $expectedRoundId
+                || (int) ($context['candidate_id'] ?? 0) !== $expectedCandidateId
+            ) {
+                $this->synchronizeFinalizationState($presentation->content_type, $context);
+
+                return;
+            }
+
+            $round = $this->round();
+            if ($remainingSeconds !== null) {
+                $this->remainingSeconds = max(0, $remainingSeconds);
+            }
+
+            $nextCandidate = $this->nextCandidate($round);
+            $this->timerRunning = false;
+            $this->collectorEnabled = false;
+
+            if ($nextCandidate !== null) {
+                $this->candidateId = $nextCandidate->id;
+                $this->resetCandidateState($round);
+                $this->persistRuntimeState();
+                $this->activatePresentationAfterFinalization($runtime);
+
+                return;
+            }
+
+            $rounds->close($round);
+            $this->candidateId = null;
+            $this->remainingSeconds = 0;
+            $this->resultsVisible = true;
+            $this->voting->update(['status' => 'draft']);
+            $this->persistRuntimeState();
+            $this->activatePresentationAfterFinalization($runtime);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function synchronizeFinalizationState(string $contentType, array $context): void
+    {
+        $this->voting->refresh();
+        $this->remainingSeconds = (int) $this->voting->runtime_remaining_seconds;
+        $this->timerRunning = (bool) $this->voting->runtime_timer_running;
+        $this->collectorEnabled = (bool) $this->voting->runtime_collector_enabled;
+        $this->resultsVisible = (bool) $this->voting->runtime_results_visible;
+
+        if ($contentType === 'election_round' && isset($context['round_id'])) {
+            $this->roundId = (int) $context['round_id'];
+            $this->candidateId = isset($context['candidate_id']) ? (int) $context['candidate_id'] : null;
+        }
+    }
+
+    private function activatePresentationAfterFinalization(PresentationRuntimeManager $runtime): void
+    {
+        $attempt = 0;
+
+        while (true) {
+            try {
+                $this->activatePresentation($runtime);
+
+                return;
+            } catch (QueryException $exception) {
+                $attempt++;
+
+                if ($attempt >= 3 || ! $this->isSqliteBusyException($exception)) {
+                    throw $exception;
+                }
+
+                usleep(50_000 * $attempt);
+            }
+        }
+    }
+
+    private function isSqliteBusyException(QueryException $exception): bool
+    {
+        return $exception->getConnectionName() === 'sqlite'
+            && (int) ($exception->errorInfo[1] ?? 0) === 5
+            && str_contains($exception->getMessage(), 'database is locked');
     }
 
     private function selectFirstCandidate(?ElectionRound $round): void

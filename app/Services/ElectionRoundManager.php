@@ -324,8 +324,8 @@ class ElectionRoundManager
         $candidateToEliminate = $unsuccessfulCandidates
             ->sortBy([
                 ['weighted_total', 'asc'],
-                ['last_name', 'asc'],
-                ['first_name', 'asc'],
+                ['last_name', 'desc'],
+                ['first_name', 'desc'],
             ])
             ->first();
 

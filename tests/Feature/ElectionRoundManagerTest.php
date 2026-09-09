@@ -174,6 +174,45 @@ test('a multi-seat contest carries forward unsuccessful candidates after elimina
     expect($nextRound->candidates()->pluck('last_name')->all())->toBe(['Bérová', 'Dudová']);
 });
 
+test('a multi-seat contest advances the alphabetically earlier candidate when results are tied', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create([
+        'voting_id' => $voting->id,
+        'quorum_participant_count' => 100,
+    ]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->where('key', 'board-hliny')->firstOrFail();
+    $contest->candidates()->createMany([
+        ['first_name' => 'Anna', 'last_name' => 'Adamová'],
+        ['first_name' => 'Bea', 'last_name' => 'Bérová'],
+        ['first_name' => 'Cyril', 'last_name' => 'Cibulík'],
+        ['first_name' => 'Dana', 'last_name' => 'Dudová'],
+    ]);
+
+    $manager = app(ElectionRoundManager::class);
+    $devices = collect([
+        electionRoundVoter($voting, '221', 2),
+        electionRoundVoter($voting, '222', 2),
+        electionRoundVoter($voting, '223', 1),
+        electionRoundVoter($voting, '224', 1),
+    ]);
+    $round = openElectionRound($manager, $contest);
+    $round->candidates()->get()->each(function ($candidate, int $index) use ($devices, $round): void {
+        $round->votes()->create([
+            'election_round_candidate_id' => $candidate->id,
+            'device_id' => $devices[$index]->id,
+            'weight_snapshot' => [2, 2, 1, 1][$index],
+            'voted_at' => now(),
+        ]);
+    });
+
+    $manager->close($round);
+    $nextRound = $contest->rounds()->where('round_number', 2)->firstOrFail();
+
+    expect($round->candidates()->where('last_name', 'Dudová')->value('status'))->toBe('eliminated');
+    expect($nextRound->candidates()->pluck('last_name')->all())->toBe(['Adamová', 'Bérová', 'Cibulík']);
+});
+
 test('a successor round limits each device to the remaining seats', function () {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
     $election = Election::query()->create(['voting_id' => $voting->id]);

@@ -72,10 +72,11 @@
                     <input wire:model.blur="firstName" placeholder="Meno" class="rounded-xl border-slate-300 px-3 py-2">
                     <input wire:model.blur="lastName" placeholder="Priezvisko" class="rounded-xl border-slate-300 px-3 py-2">
                     <input wire:model.blur="responseTimeSeconds" type="number" min="1" max="3600" placeholder="Čas v sekundách" class="rounded-xl border-slate-300 px-3 py-2">
-                    <select wire:model="deviceGroupId" class="rounded-xl border-slate-300 px-3 py-2">
-                        <option value="">Bez lokality — Kontrolná komisia, všetky zariadenia</option>
+                    <select wire:model="admissionTarget" class="rounded-xl border-slate-300 px-3 py-2">
+                        <option value="chairperson">Predseda predstavenstva — všetky zariadenia</option>
+                        <option value="supervisory-committee">Kontrolná komisia — všetky zariadenia</option>
                         @foreach($groups as $group)
-                            <option value="{{ $group->id }}">{{ $group->name }} — príslušné predstavenstvo</option>
+                            <option value="group:{{ $group->id }}">{{ $group->name }} — príslušné predstavenstvo</option>
                         @endforeach
                     </select>
                     <button class="rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white">Pridať návrh</button>

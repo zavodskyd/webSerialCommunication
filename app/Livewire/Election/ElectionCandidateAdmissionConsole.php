@@ -11,6 +11,7 @@ use App\Services\ElectionCandidateAdmissionManager;
 use App\Support\PresentationRuntimeManager;
 use App\Support\SerialAgentClient;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Str;
 use Livewire\Component;
 
 class ElectionCandidateAdmissionConsole extends Component
@@ -23,7 +24,7 @@ class ElectionCandidateAdmissionConsole extends Component
 
     public string $lastName = '';
 
-    public ?int $deviceGroupId = null;
+    public string $admissionTarget = 'supervisory-committee';
 
     public int $responseTimeSeconds = 30;
 
@@ -40,14 +41,14 @@ class ElectionCandidateAdmissionConsole extends Component
         $validated = $this->validate([
             'firstName' => ['required', 'string', 'max:255'],
             'lastName' => ['required', 'string', 'max:255'],
-            'deviceGroupId' => ['nullable', 'integer'],
+            'admissionTarget' => ['required', 'string'],
             'responseTimeSeconds' => ['required', 'integer', 'min:1', 'max:3600'],
         ]);
 
-        $group = $validated['deviceGroupId']
-            ? $this->election->deviceGroups()->whereKey($validated['deviceGroupId'])->firstOrFail()
+        $group = Str::startsWith($validated['admissionTarget'], 'group:')
+            ? $this->election->deviceGroups()->whereKey((int) Str::after($validated['admissionTarget'], 'group:'))->firstOrFail()
             : null;
-        $contest = $this->contestForAdmission($group);
+        $contest = $this->contestForAdmission($group, $validated['admissionTarget']);
 
         $admission = ElectionCandidateAdmission::query()->create([
             'election_id' => $this->election->id,
@@ -58,7 +59,7 @@ class ElectionCandidateAdmissionConsole extends Component
             'response_time_seconds' => $validated['responseTimeSeconds'],
         ]);
 
-        $this->reset('firstName', 'lastName', 'deviceGroupId');
+        $this->reset('firstName', 'lastName', 'admissionTarget');
         $this->responseTimeSeconds = 30;
         session()->flash('status', 'Návrh kandidáta bol pridaný.');
     }
@@ -177,7 +178,7 @@ class ElectionCandidateAdmissionConsole extends Component
         ])->layout('layouts.app')->title('Doplnenie kandidáta');
     }
 
-    private function contestForAdmission(?DeviceGroup $group): ElectionContest
+    private function contestForAdmission(?DeviceGroup $group, string $admissionTarget): ElectionContest
     {
         $key = $group ? match ($group->name) {
             'Hliny' => 'board-hliny',
@@ -185,7 +186,10 @@ class ElectionCandidateAdmissionConsole extends Component
             'Vlčince' => 'board-vlcince',
             'Rozptyl/Staré Mesto' => 'board-rozptyl-stare-mesto',
             default => throw new \InvalidArgumentException('Lokalita nemá priradenú volebnú súťaž.'),
-        } : 'supervisory-committee';
+        } : match ($admissionTarget) {
+            'chairperson', 'supervisory-committee' => $admissionTarget,
+            default => throw new \InvalidArgumentException('Nie je vybraný platný zoznam kandidátov.'),
+        };
 
         return $this->election->contests()->where('key', $key)->firstOrFail();
     }

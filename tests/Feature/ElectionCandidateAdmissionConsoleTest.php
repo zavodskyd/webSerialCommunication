@@ -18,14 +18,33 @@ test('user can open a localized candidate admission', function () {
         ->assertSeeHtml('href="'.route('votings.presentation', $voting).'"')
         ->assertSeeHtml('target="_blank"')
         ->set('firstName', 'Jana')->set('lastName', 'Nováková')
-        ->set('deviceGroupId', $group->id)
+        ->set('admissionTarget', 'group:'.$group->id)
         ->call('createAndOpenAdmission')
         ->assertHasNoErrors();
 
     expect($election->fresh()->voting->id)->toBe($voting->id);
 });
 
-test('operator can resolve the active admission and return the presentation runtime to idle', function () {
+test('user can add a chairperson candidate admission for all devices', function () {
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id]);
+    $election->createDefaultContests();
+
+    Livewire::test(ElectionCandidateAdmissionConsole::class, ['voting' => $voting])
+        ->assertSee('Predseda predstavenstva — všetky zariadenia')
+        ->set('firstName', 'Jana')
+        ->set('lastName', 'Nováková')
+        ->set('admissionTarget', 'chairperson')
+        ->call('createAndOpenAdmission')
+        ->assertHasNoErrors();
+
+    $admission = ElectionCandidateAdmission::query()->where('election_id', $election->id)->sole();
+
+    expect($admission->contest->key)->toBe('chairperson')
+        ->and($admission->device_group_id)->toBeNull();
+});
+
+test('operator can resolve the active admission and keep its result on the presentation', function () {
     $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
     $election = Election::query()->create(['voting_id' => $voting->id]);
     $election->createDefaultContests();
@@ -42,9 +61,9 @@ test('operator can resolve the active admission and return the presentation runt
     app(PresentationRuntimeManager::class)->activate($voting, 'candidate_admission', ['admission_id' => $admission->id]);
 
     Livewire::test(ElectionCandidateAdmissionConsole::class, ['voting' => $voting])
-        ->call('resolveAdmission', $admission->id)
+        ->call('showAdmissionResults', $admission->id)
         ->assertHasNoErrors();
 
     expect($admission->fresh()->status)->toBe('rejected');
-    expect(app(PresentationRuntimeManager::class)->current()->content_type)->toBe('none');
+    expect(app(PresentationRuntimeManager::class)->current()->content_type)->toBe('candidate_admission');
 });

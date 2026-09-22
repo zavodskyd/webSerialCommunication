@@ -131,6 +131,34 @@ test('supervisory committee candidate admission requires the general participant
         ->toThrow(InvalidArgumentException::class, 'Pred spustením nastavte celkový počet účastníkov pre základ väčšiny.');
 });
 
+test('accepted chairperson admission uses the general participant count and adds the candidate to the chairperson list', function () {
+    [$election] = admissionFixture();
+    $contest = $election->contests()->where('key', 'chairperson')->firstOrFail();
+    $firstDevice = admissionDevice('001', 4);
+    $secondDevice = admissionDevice('002', 4);
+    $draftRound = $contest->rounds()->create(['round_number' => 1, 'status' => 'draft']);
+    $admission = ElectionCandidateAdmission::query()->create([
+        'election_id' => $election->id,
+        'election_contest_id' => $contest->id,
+        'device_group_id' => null,
+        'first_name' => 'Jana',
+        'last_name' => 'Nováková',
+    ]);
+    $manager = app(ElectionCandidateAdmissionManager::class);
+
+    $started = $manager->start($admission);
+    $manager->recordVote($admission, $firstDevice, 'A');
+    $manager->recordVote($admission, $secondDevice, 'A');
+    $manager->stop($admission);
+    $resolvedAdmission = $manager->showResults($admission);
+
+    expect($started->quorum_participant_count_snapshot)->toBe(9)
+        ->and($started->eligibleDeviceWeights()->count())->toBe(2)
+        ->and($resolvedAdmission->status)->toBe('accepted')
+        ->and($contest->candidates()->where('first_name', 'Jana')->where('last_name', 'Nováková')->exists())->toBeTrue()
+        ->and($draftRound->candidates()->where('first_name', 'Jana')->where('last_name', 'Nováková')->exists())->toBeTrue();
+});
+
 test('restarting an accepted admission removes only the candidate created by that admission', function () {
     [$election, $contest, $group] = admissionFixture();
     $device = admissionDevice('001', 4);

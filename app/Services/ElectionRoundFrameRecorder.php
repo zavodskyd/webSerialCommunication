@@ -25,7 +25,10 @@ class ElectionRoundFrameRecorder
         $round = ElectionRound::query()->find($runtime->context['round_id'] ?? 0);
         $candidate = ElectionRoundCandidate::query()->find($runtime->context['candidate_id'] ?? 0);
         $decoded = $this->decoder->decode($hex);
-        $deadline = $round?->opened_at?->copy()->addSeconds($round->response_time_seconds);
+        $voting = $round?->contest->election->voting;
+        $deadline = $voting?->runtime_timer_running
+            ? $round->opened_at?->copy()->addSeconds($round->response_time_seconds)
+            : null;
 
         if ($receivedAt !== null && $deadline !== null && $receivedAt->greaterThan($deadline)) {
             return $this->logResult($round, $candidate, $hex, new VoteRecordingResult(false, 'Hlas prišiel po skončení časového limitu.', $decoded === null ? null : (string) $decoded['deviceNumber'], $decoded['buttonName'] ?? null, [], 'after_deadline'), $receivedAt);

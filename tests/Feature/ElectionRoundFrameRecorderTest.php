@@ -28,6 +28,7 @@ test('a round serial frame is accepted and audited with its election context', f
 
 test('a frame received at the deadline is counted and a later frame is rejected', function () {
     [$round] = activeRoundFixture();
+    $round->contest->election->voting->update(['runtime_timer_running' => true]);
     $round->update([
         'opened_at' => now()->startOfSecond(),
         'response_time_seconds' => 30,
@@ -43,6 +44,17 @@ test('a frame received at the deadline is counted and a later frame is rejected'
     expect($late?->rejectionReason)->toBe('after_deadline');
     expect($round->votes()->count())->toBe(1);
     expect(VoteEvent::query()->where('election_round_id', $round->id)->latest('id')->value('received_at')->getTimestamp())->toBe($deadline->addSecond()->getTimestamp());
+});
+
+test('an election frame remains valid while the collector is paused past the configured duration', function () {
+    [$round] = activeRoundFixture();
+    $round->update(['opened_at' => now()->startOfSecond()->subSeconds(90), 'response_time_seconds' => 30]);
+    $round->contest->election->voting->update(['runtime_timer_running' => false]);
+
+    $result = app(SerialAgentFrameHandler::class)->handle(qomoFrameFor(1, 'A'), now()->toImmutable());
+
+    expect($result?->accepted)->toBeTrue();
+    expect($round->votes()->count())->toBe(1);
 });
 
 test('a rejected round serial frame is audited without creating a vote', function () {

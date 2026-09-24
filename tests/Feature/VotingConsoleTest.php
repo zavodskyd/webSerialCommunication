@@ -186,6 +186,37 @@ test('rust agent driver can start collection with the timer paused', function ()
     Carbon::setTestNow();
 });
 
+test('start without time accepts votes after the configured duration and then starts the full countdown', function () {
+    config(['serial.driver' => 'rust-agent']);
+
+    [, $voting, $question] = createConsoleFixture();
+    Carbon::setTestNow(now()->startOfSecond());
+
+    $client = $this->mock(SerialAgentClient::class);
+    $client->shouldReceive('command')->once()->with('start')->andReturn(['ok' => true]);
+
+    $component = app(VotingConsole::class);
+    $component->mount($voting);
+    $component->serialConnected = true;
+    $component->startQuestionPausedViaHelper();
+
+    Carbon::setTestNow(now()->addSeconds(90));
+    $receivedAt = now()->toImmutable();
+    $result = app(SerialAgentFrameHandler::class)->handle(qomoFrameFor(1, 'A'), $receivedAt);
+
+    expect($result?->accepted)->toBeTrue();
+    expect(Vote::query()->count())->toBe(1);
+
+    $component->startQuestion();
+
+    expect($component->timerRunning)->toBeTrue();
+    expect($component->remainingSeconds)->toBe(30);
+    expect($question->fresh()->opened_at->getTimestamp())->toBe($receivedAt->getTimestamp());
+    expect(Vote::query()->count())->toBe(1);
+
+    Carbon::setTestNow();
+});
+
 test('events log toggle flips the visible flag', function () {
     [, $voting] = createConsoleFixture();
 

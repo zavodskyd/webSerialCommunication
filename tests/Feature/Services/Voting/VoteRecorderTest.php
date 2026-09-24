@@ -281,7 +281,7 @@ test('returns unknown_device for a valid frame without configured voting device'
 
 test('rejects a frame received after the question deadline', function () {
     [$voting, $question] = createRecorderFixture();
-    $voting->forceFill(['runtime_collector_enabled' => true])->save();
+    $voting->forceFill(['runtime_collector_enabled' => true, 'runtime_timer_running' => true])->save();
     $question->update([
         'status' => 'live',
         'opened_at' => now()->startOfSecond(),

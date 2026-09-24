@@ -59,7 +59,9 @@ class VoteRecorder
         bool $collectorEnabledHint,
         ?CarbonImmutable $receivedAt,
     ): VoteRecordingResult {
-        $deadline = $question->opened_at?->copy()->addSeconds($question->response_time_seconds);
+        $deadline = $voting->runtime_timer_running
+            ? $question->opened_at?->copy()->addSeconds($question->response_time_seconds)
+            : null;
         if ($receivedAt !== null && $deadline !== null && $receivedAt->greaterThan($deadline)) {
             return new VoteRecordingResult(
                 accepted: false,

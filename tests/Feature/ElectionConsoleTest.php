@@ -78,6 +78,33 @@ test('the election console uses the configured response time for a created round
     expect($contest->rounds()->firstOrFail()->response_time_seconds)->toBe(10);
 });
 
+test('election start without time later runs the full configured countdown', function () {
+    $client = Mockery::mock(SerialAgentClient::class);
+    $client->shouldReceive('health')->andReturn(['ok' => true, 'connected' => true])->byDefault();
+    $client->shouldReceive('command')->once()->with('start')->andReturn(['ok' => true]);
+    app()->instance(SerialAgentClient::class, $client);
+
+    $voting = Voting::query()->create(['name' => 'Voľby', 'voting_type' => 'election']);
+    $election = Election::query()->create(['voting_id' => $voting->id, 'quorum_participant_count' => 1]);
+    $election->createDefaultContests();
+    $contest = $election->contests()->firstOrFail();
+    $contest->candidates()->create(['first_name' => 'Anna', 'last_name' => 'Adamová']);
+
+    $component = Livewire::test(ElectionConsole::class, ['voting' => $voting])->call('createRound');
+    $component->set('serialConnected', true)->call('startRoundPausedViaHelper');
+    $round = $contest->rounds()->firstOrFail();
+    $round->update(['opened_at' => now()->subSeconds(90)]);
+
+    expect($voting->fresh()->runtime_timer_running)->toBeFalse();
+
+    $component->call('startRoundViaHelper')
+        ->assertSet('timerRunning', true)
+        ->assertSet('remainingSeconds', 30);
+
+    expect($round->fresh()->opened_at->getTimestamp())->toBe(now()->startOfSecond()->getTimestamp());
+    expect($voting->fresh()->runtime_timer_running)->toBeTrue();
+});
+
 test('the election console advances to the next candidate only after the serial queue is drained', function () {
     $client = Mockery::mock(SerialAgentClient::class);
     $client->shouldReceive('health')->andReturn(['ok' => true, 'connected' => true])->byDefault();

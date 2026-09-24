@@ -1,4 +1,9 @@
-use std::{net::SocketAddr, path::PathBuf, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use anyhow::Context;
 use axum::{
@@ -91,12 +96,15 @@ async fn handle_socket(socket: WebSocket, context: AgentContext) {
         return;
     }
 
+    let mut sent_at = HashMap::new();
     let pending = context.queue.lock().expect("queue mutex").pending();
 
     for frame in pending {
+        let id = frame.id.clone();
         if send_json(&mut sender, &ServerMessage::from(frame)).await.is_err() {
             return;
         }
+        sent_at.insert(id, Instant::now());
     }
 
     let mut events = context.events.subscribe();
@@ -118,8 +126,12 @@ async fn handle_socket(socket: WebSocket, context: AgentContext) {
             event = events.recv() => {
                 match event {
                     Ok(AgentEvent::Frame(frame)) => {
-                        if send_json(&mut sender, &ServerMessage::from(frame)).await.is_err() {
-                            return;
+                        if !sent_at.contains_key(&frame.id) {
+                            let id = frame.id.clone();
+                            if send_json(&mut sender, &ServerMessage::from(frame)).await.is_err() {
+                                return;
+                            }
+                            sent_at.insert(id, Instant::now());
                         }
                     }
                     Ok(AgentEvent::Status(status)) => {
@@ -132,10 +144,20 @@ async fn handle_socket(socket: WebSocket, context: AgentContext) {
             }
             _ = flush_interval.tick() => {
                 let pending = context.queue.lock().expect("queue mutex").pending();
+                let pending_ids: HashSet<&str> = pending.iter().map(|frame| frame.id.as_str()).collect();
+                sent_at.retain(|id, _| pending_ids.contains(id.as_str()));
 
                 for frame in pending {
-                    if send_json(&mut sender, &ServerMessage::from(frame)).await.is_err() {
-                        return;
+                    let should_send = match sent_at.get(&frame.id) {
+                        Some(last_sent) => last_sent.elapsed() >= Duration::from_secs(5),
+                        None => true,
+                    };
+                    if should_send {
+                        let id = frame.id.clone();
+                        if send_json(&mut sender, &ServerMessage::from(frame)).await.is_err() {
+                            return;
+                        }
+                        sent_at.insert(id, Instant::now());
                     }
                 }
             }
@@ -170,7 +192,7 @@ async fn handle_client_message(
             };
 
             if let Ok(mut state) = context.shared.lock() {
-                state.queued_frames = queued_frames;
+                state.queued_frames = queued_frames + state.pending_frames;
             }
         }
         ClientMessage::Hello { .. } => {}

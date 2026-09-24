@@ -2,11 +2,11 @@ use std::{
     io::{ErrorKind, Read, Write},
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use chrono::Utc;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver, RecvTimeoutError, Sender};
 use serialport::{SerialPort, SerialPortType};
 use uuid::Uuid;
 
@@ -154,6 +154,20 @@ fn run_worker(
                 }
                 SerialCommand::Stop => {
                     write_hex(&mut port, HEX_STOP)?;
+                    let deadline = Instant::now() + Duration::from_millis(250);
+                    let mut quiet_reads = 0;
+                    while quiet_reads < 2 && Instant::now() < deadline {
+                        match port.read(&mut buffer) {
+                            Ok(bytes_read) if bytes_read > 0 => {
+                                enqueue_bytes(&mut incoming, &buffer[..bytes_read], &context)?;
+                                quiet_reads = 0;
+                            }
+                            Ok(_) => quiet_reads += 1,
+                            Err(error) if error.kind() == ErrorKind::TimedOut => quiet_reads += 1,
+                            Err(error) => return Err(error.into()),
+                        }
+                    }
+                    incoming.clear();
                     update_state(&context, |state| {
                         state.collecting = false;
                         state.status = "Collection stopped".to_string();
@@ -191,27 +205,7 @@ fn run_worker(
 
         match port.read(&mut buffer) {
             Ok(bytes_read) if bytes_read > 0 => {
-                incoming.extend_from_slice(&buffer[..bytes_read]);
-
-                for hex in drain_frames(&mut incoming) {
-                    let frame = FrameEvent {
-                        id: Uuid::new_v4().to_string(),
-                        hex,
-                        received_at: Utc::now().to_rfc3339(),
-                    };
-
-                    {
-                        let mut queue = context.queue.lock().expect("queue mutex");
-                        queue.push(frame.clone())?;
-                        update_state(&context, |state| {
-                            state.queued_frames = queue.len();
-                            state.last_frame_hex = Some(frame.hex.clone());
-                        });
-                    }
-
-                    let _ = context.events.send(AgentEvent::Frame(frame));
-                    broadcast_status(&context);
-                }
+                enqueue_bytes(&mut incoming, &buffer[..bytes_read], &context)?;
             }
             Ok(_) => {}
             Err(error) if error.kind() == ErrorKind::TimedOut => {}
@@ -220,15 +214,103 @@ fn run_worker(
     }
 }
 
-pub fn drain_frames(incoming: &mut Vec<u8>) -> Vec<String> {
-    let mut frames = Vec::new();
+fn enqueue_bytes(
+    incoming: &mut Vec<u8>,
+    bytes: &[u8],
+    context: &AgentContext,
+) -> anyhow::Result<()> {
+    incoming.extend_from_slice(bytes);
+    let frames: Vec<FrameEvent> = drain_frames(incoming)
+        .into_iter()
+        .map(|hex| FrameEvent {
+            id: Uuid::new_v4().to_string(),
+            hex,
+            received_at: Utc::now().to_rfc3339(),
+        })
+        .collect();
 
-    while incoming.len() >= FRAME_LENGTH {
-        let frame: Vec<u8> = incoming.drain(..FRAME_LENGTH).collect();
-        frames.push(bytes_to_hex(&frame));
+    if let Some(last) = frames.last() {
+        update_state(context, |state| {
+            state.pending_frames += frames.len();
+            state.queued_frames += frames.len();
+            state.last_frame_hex = Some(last.hex.clone());
+        });
     }
 
+    for frame in frames {
+        context.frame_tx.send(frame)?;
+    }
+
+    Ok(())
+}
+
+pub fn persist_frames(receiver: Receiver<FrameEvent>, context: AgentContext) -> anyhow::Result<()> {
+    while let Ok(first) = receiver.recv() {
+        let mut batch = vec![first];
+        let deadline = Instant::now() + Duration::from_millis(25);
+        while batch.len() < 256 {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match receiver.recv_timeout(remaining) {
+                Ok(frame) => batch.push(frame),
+                Err(RecvTimeoutError::Timeout) => break,
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+
+        persist_batch(&context, batch)?;
+    }
+
+    Ok(())
+}
+
+fn persist_batch(context: &AgentContext, batch: Vec<FrameEvent>) -> anyhow::Result<()> {
+    let queue_length = {
+        let mut queue = context.queue.lock().expect("queue mutex");
+        queue.push_batch(&batch)?;
+        queue.len()
+    };
+    update_state(context, |state| {
+        state.pending_frames = state.pending_frames.saturating_sub(batch.len());
+        state.queued_frames = queue_length + state.pending_frames;
+    });
+
+    for frame in batch {
+        let _ = context.events.send(AgentEvent::Frame(frame));
+    }
+    broadcast_status(context);
+    Ok(())
+}
+
+pub fn drain_frames(incoming: &mut Vec<u8>) -> Vec<String> {
+    let mut frames = Vec::new();
+    let mut offset = 0;
+
+    while incoming.len() - offset >= FRAME_LENGTH {
+        let frame = &incoming[offset..offset + FRAME_LENGTH];
+
+        if is_valid_frame(frame) {
+            frames.push(bytes_to_hex(frame));
+            offset += FRAME_LENGTH;
+        } else {
+            offset += 1;
+        }
+    }
+
+    incoming.drain(..offset);
+
     frames
+}
+
+fn is_valid_frame(frame: &[u8]) -> bool {
+    (0x20..=0x2f).contains(&frame[0])
+        && matches!(
+            frame[1] & 0xf0,
+            0x80 | 0x90 | 0xa0 | 0xb0 | 0xc0 | 0xd0 | 0xe0
+        )
+        && frame[0] ^ frame[1] == frame[2]
 }
 
 fn write_hex(port: &mut Box<dyn SerialPort>, hex: &str) -> anyhow::Result<()> {
@@ -289,12 +371,125 @@ mod tests {
     use super::*;
 
     #[test]
+    fn buffers_and_persists_150_frames_before_publishing_them() {
+        let path =
+            std::env::temp_dir().join(format!("serial-agent-burst-{}.journal", Uuid::new_v4()));
+        let queue = Arc::new(Mutex::new(
+            crate::queue::FrameQueue::load(path.clone()).unwrap(),
+        ));
+        let shared = Arc::new(Mutex::new(crate::SharedState::default()));
+        let (frame_tx, frame_rx) = crossbeam_channel::bounded(4096);
+        let (events, _) = tokio::sync::broadcast::channel(512);
+        let mut event_rx = events.subscribe();
+        let context = AgentContext {
+            shared: Arc::clone(&shared),
+            queue: Arc::clone(&queue),
+            frame_tx,
+            events,
+            token: Arc::new(String::new()),
+        };
+        let mut bytes = Vec::new();
+        for device in 0_u16..150 {
+            let first = 0x20 + (device >> 4) as u8;
+            let second = 0x80 | (device & 0x0f) as u8;
+            bytes.extend_from_slice(&[first, second, first ^ second]);
+        }
+
+        enqueue_bytes(&mut Vec::new(), &bytes, &context).unwrap();
+        assert_eq!(shared.lock().unwrap().queued_frames, 150);
+        assert_eq!(shared.lock().unwrap().pending_frames, 150);
+        assert_eq!(queue.lock().unwrap().len(), 0);
+        assert!(event_rx.try_recv().is_err());
+
+        persist_batch(&context, frame_rx.try_iter().collect()).unwrap();
+        assert_eq!(shared.lock().unwrap().queued_frames, 150);
+        assert_eq!(shared.lock().unwrap().pending_frames, 0);
+        assert_eq!(queue.lock().unwrap().len(), 150);
+        assert_eq!(
+            crate::queue::FrameQueue::load(path.clone()).unwrap().len(),
+            150
+        );
+        for _ in 0..150 {
+            assert!(matches!(event_rx.try_recv().unwrap(), AgentEvent::Frame(_)));
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn drains_complete_three_byte_frames() {
         let mut incoming = vec![0x20, 0x81, 0xa1, 0x20, 0x91, 0xb1, 0xff];
         let frames = drain_frames(&mut incoming);
 
         assert_eq!(frames, vec!["2081a1", "2091b1"]);
         assert_eq!(incoming, vec![0xff]);
+    }
+
+    #[test]
+    fn resynchronizes_after_missing_byte_before_repeated_press() {
+        let mut incoming = vec![0x20, 0x81, 0x20, 0x81, 0xa1];
+
+        assert_eq!(drain_frames(&mut incoming), vec!["2081a1"]);
+        assert!(incoming.is_empty());
+    }
+
+    #[test]
+    fn resynchronizes_after_inserted_byte_and_keeps_partial_frame() {
+        let mut incoming = vec![0x20, 0x81, 0xa1, 0xff, 0x20, 0x91];
+
+        assert_eq!(drain_frames(&mut incoming), vec!["2081a1"]);
+        assert_eq!(incoming, vec![0x20, 0x91]);
+
+        incoming.push(0xb1);
+        assert_eq!(drain_frames(&mut incoming), vec!["2091b1"]);
+        assert!(incoming.is_empty());
+    }
+
+    #[test]
+    fn rejects_rotated_frames_even_when_xor_matches() {
+        let mut incoming = vec![0x85, 0xa5, 0x20, 0x20, 0x85, 0xa5];
+
+        assert_eq!(drain_frames(&mut incoming), vec!["2085a5"]);
+        assert!(incoming.is_empty());
+    }
+
+    #[test]
+    fn accepts_protocol_button_and_device_boundaries_only() {
+        let mut incoming = vec![0x20, 0x80, 0xa0, 0x2f, 0xef, 0xc0];
+
+        assert_eq!(drain_frames(&mut incoming), vec!["2080a0", "2fefc0"]);
+        assert!(incoming.is_empty());
+
+        let mut invalid = vec![0x30, 0x80, 0xb0, 0x20, 0xf0, 0xd0];
+        assert!(drain_frames(&mut invalid).is_empty());
+        assert_eq!(invalid.len(), 2);
+    }
+
+    #[test]
+    fn accepts_every_device_and_supported_button() {
+        let buttons = [0x80_u8, 0x90, 0xa0, 0xb0, 0xc0, 0xd0, 0xe0];
+        let mut incoming = Vec::new();
+        let mut expected = Vec::new();
+
+        for device in 0_u16..=255 {
+            for button in buttons {
+                let first = 0x20 + (device >> 4) as u8;
+                let second = button | (device & 0x0f) as u8;
+                let frame = [first, second, first ^ second];
+                incoming.extend_from_slice(&frame);
+                expected.push(bytes_to_hex(&frame));
+            }
+        }
+
+        assert_eq!(drain_frames(&mut incoming), expected);
+        assert!(incoming.is_empty());
+    }
+
+    #[test]
+    fn recovers_after_corrupted_checksum() {
+        let mut incoming = vec![0x20, 0x81, 0xa0, 0x20, 0x81, 0xa1];
+
+        assert_eq!(drain_frames(&mut incoming), vec!["2081a1"]);
+        assert!(incoming.is_empty());
     }
 
     #[test]

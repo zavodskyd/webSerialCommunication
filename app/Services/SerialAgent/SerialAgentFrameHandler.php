@@ -10,6 +10,7 @@ use App\Services\ElectionRoundFrameRecorder;
 use App\Services\Voting\VoteRecorder;
 use App\Services\Voting\VoteRecordingResult;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 class SerialAgentFrameHandler
 {
@@ -18,6 +19,22 @@ class SerialAgentFrameHandler
         private readonly ElectionCandidateAdmissionFrameRecorder $admissionRecorder,
         private readonly ElectionRoundFrameRecorder $roundRecorder,
     ) {}
+
+    public function handleOnce(string $id, string $hex, ?CarbonImmutable $receivedAt = null): ?VoteRecordingResult
+    {
+        return DB::transaction(function () use ($id, $hex, $receivedAt): ?VoteRecordingResult {
+            $inserted = DB::table('serial_agent_processed_frames')->insertOrIgnore([
+                'id' => $id,
+                'processed_at' => now(),
+            ]);
+
+            if ($inserted === 0) {
+                return null;
+            }
+
+            return $this->handle($hex, $receivedAt);
+        });
+    }
 
     public function handle(string $hex, ?CarbonImmutable $receivedAt = null): ?VoteRecordingResult
     {

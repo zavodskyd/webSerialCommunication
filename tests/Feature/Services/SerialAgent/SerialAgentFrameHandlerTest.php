@@ -7,7 +7,11 @@ use App\Models\Vote;
 use App\Models\VoteEvent;
 use App\Models\Voting;
 use App\Models\VotingAttendee;
+use App\Services\ElectionCandidateAdmissionFrameRecorder;
+use App\Services\ElectionRoundFrameRecorder;
 use App\Services\SerialAgent\SerialAgentFrameHandler;
+use App\Services\Voting\VoteRecorder;
+use Illuminate\Support\Facades\DB;
 
 test('it returns null when no voting is active', function () {
     $result = app(SerialAgentFrameHandler::class)->handle('2081a1');
@@ -33,6 +37,42 @@ test('it records rust-agent frames into the active voting question', function ()
     expect($event->voting_id)->toBe($voting->id);
     expect($event->accepted)->toBeTrue();
     expect($event->raw_hex)->toBe(qomoFrameFor(1, 'A'));
+});
+
+test('it processes each agent frame id only once across redelivery', function () {
+    createSerialAgentFrameFixture();
+    $handler = app(SerialAgentFrameHandler::class);
+    $hex = qomoFrameFor(1, 'A');
+
+    expect($handler->handleOnce('frame-1', $hex)?->accepted)->toBeTrue();
+    expect($handler->handleOnce('frame-1', $hex))->toBeNull();
+    expect(Vote::query()->count())->toBe(1);
+    expect(VoteEvent::query()->count())->toBe(1);
+    expect(DB::table('serial_agent_processed_frames')->count())->toBe(1);
+});
+
+test('it remembers frames received without an active voting context', function () {
+    $handler = app(SerialAgentFrameHandler::class);
+
+    expect($handler->handleOnce('frame-inactive', '2081a1'))->toBeNull();
+    createSerialAgentFrameFixture();
+    expect($handler->handleOnce('frame-inactive', '2081a1'))->toBeNull();
+    expect(Vote::query()->count())->toBe(0);
+});
+
+test('it does not mark a frame processed when recording fails', function () {
+    createSerialAgentFrameFixture();
+    $recorder = Mockery::mock(VoteRecorder::class);
+    $recorder->shouldReceive('record')->once()->andThrow(new RuntimeException('recording failed'));
+    $handler = new SerialAgentFrameHandler(
+        $recorder,
+        app(ElectionCandidateAdmissionFrameRecorder::class),
+        app(ElectionRoundFrameRecorder::class),
+    );
+
+    expect(fn () => $handler->handleOnce('frame-failed', qomoFrameFor(1, 'A')))
+        ->toThrow(RuntimeException::class, 'recording failed');
+    expect(DB::table('serial_agent_processed_frames')->count())->toBe(0);
 });
 
 test('it counts a main-voting frame at the deadline and rejects a later frame', function () {

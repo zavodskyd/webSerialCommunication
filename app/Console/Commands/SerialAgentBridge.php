@@ -101,9 +101,8 @@ class SerialAgentBridge extends Command
             return;
         }
 
-        $monitor->recordFrame($hex);
-
         if (SerialAgentMode::isTest()) {
+            $monitor->recordFrame($hex);
             $connection->sendText(json_encode([
                 'type' => 'ack',
                 'id' => $id,
@@ -112,7 +111,7 @@ class SerialAgentBridge extends Command
             return;
         }
 
-        $handler->handle($hex, $receivedAt);
+        $handler->handleOnce($id, $hex, $receivedAt);
 
         $connection->sendText(json_encode([
             'type' => 'ack',

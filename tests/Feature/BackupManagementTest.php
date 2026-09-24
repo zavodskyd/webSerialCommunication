@@ -6,6 +6,7 @@ use App\Services\Backup\NativeBackupExporter;
 use App\Services\Backup\NativeBackupExportResult;
 use App\Support\ApplicationBackupManager;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Mockery\MockInterface;
 
 use function Pest\Laravel\mock;
@@ -38,6 +39,11 @@ test('json backup download includes application tables including users', functio
         'code_ruka' => '',
     ]);
 
+    DB::table('serial_agent_processed_frames')->insert([
+        'id' => 'frame-backup',
+        'processed_at' => now(),
+    ]);
+
     $response = $this->get(route('settings.backup.data'));
 
     $response->assertOk();
@@ -48,6 +54,7 @@ test('json backup download includes application tables including users', functio
     expect($payload['format'])->toBe('serial-communication-backup-v1');
     expect($payload['tables']['users'][0]['email'])->toBe('backup@example.com');
     expect($payload['tables']['devices'][0]['device_number'])->toBe('001');
+    expect($payload['tables']['serial_agent_processed_frames'][0]['id'])->toBe('frame-backup');
     expect(array_keys($payload['tables']))->toBe([
         'users',
         'devices',
@@ -57,6 +64,7 @@ test('json backup download includes application tables including users', functio
         'voting_attendees',
         'votes',
         'vote_events',
+        'serial_agent_processed_frames',
     ]);
 });
 

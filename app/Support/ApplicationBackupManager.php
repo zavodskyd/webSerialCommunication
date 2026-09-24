@@ -22,6 +22,7 @@ class ApplicationBackupManager
         'voting_attendees',
         'votes',
         'vote_events',
+        'serial_agent_processed_frames',
     ];
 
     /**
@@ -207,7 +208,7 @@ class ApplicationBackupManager
         $validatedTables = [];
 
         foreach (self::APPLICATION_TABLES as $table) {
-            $rows = $tables[$table] ?? null;
+            $rows = $tables[$table] ?? ($table === 'serial_agent_processed_frames' ? [] : null);
 
             if (! is_array($rows)) {
                 throw new InvalidArgumentException("JSON záloha neobsahuje tabuľku {$table}.");

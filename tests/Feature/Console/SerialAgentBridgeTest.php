@@ -9,12 +9,12 @@ afterEach(function () {
     SerialAgentMode::clear();
 });
 
-test('it mirrors frames into the test monitor and voting handler before acknowledging them outside test mode', function () {
+test('it routes production frames to the voting handler before acknowledging them', function () {
     $handler = Mockery::mock(SerialAgentFrameHandler::class);
-    $handler->shouldReceive('handle')->once()->with('2081a1', null);
+    $handler->shouldReceive('handleOnce')->once()->with('frame-1', '2081a1', null);
 
     $monitor = Mockery::mock(SerialAgentTestMonitor::class);
-    $monitor->shouldReceive('recordFrame')->once()->with('2081a1');
+    $monitor->shouldNotReceive('recordFrame');
 
     $connection = Mockery::mock();
     $connection->shouldReceive('sendText')->once()->withArgs(function (string $payload): bool {
@@ -40,7 +40,7 @@ test('it acknowledges test frames without routing them into the voting handler',
     SerialAgentMode::activateTest();
 
     $handler = Mockery::mock(SerialAgentFrameHandler::class);
-    $handler->shouldNotReceive('handle');
+    $handler->shouldNotReceive('handleOnce');
 
     $monitor = Mockery::mock(SerialAgentTestMonitor::class);
     $monitor->shouldReceive('recordFrame')->once()->with('2081a1');
